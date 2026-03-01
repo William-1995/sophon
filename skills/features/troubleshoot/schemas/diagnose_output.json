@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sophon/troubleshoot/diagnose/output",
+  "title": "troubleshoot.diagnose Output Contract",
+  "description": "Skill produces this structure. Main agent passes through; frontend renders by type.",
+  "type": "object",
+  "required": ["summary"],
+  "properties": {
+    "error": { "type": "string" },
+    "summary": { "type": "string" },
+    "traces_count": { "type": "integer" },
+    "logs_count": { "type": "integer" },
+    "by_level": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "time_series": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": { "date": { "type": "string" }, "count": { "type": "integer" } }
+      }
+    },
+    "operation_breakdown": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": { "operation": { "type": "string" }, "count": { "type": "integer" } }
+      }
+    },
+    "gen_ui": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["format", "messages"],
+          "properties": {
+            "format": { "const": "a2ui" },
+            "surfaceId": { "type": "string" },
+            "messages": { "type": "array" }
+          }
+        },
+        {
+          "required": ["type", "payload"],
+          "properties": {
+            "type": { "type": "string", "enum": ["bar", "line"] },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "charts": { "type": "array" }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}
