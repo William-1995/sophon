@@ -1,0 +1,7 @@
+# Sophon V7 - Minimal dependencies
+httpx>=0.27.0
+fastapi>=0.115.0
+uvicorn>=0.32.0
+jsonschema>=4.0.0
+ag-ui-protocol>=0.1.13
+ddgs>=9.0.0

@@ -1,0 +1,127 @@
+"""Memory long-term - store conversation history."""
+import time
+from pathlib import Path
+
+from db.schema import get_connection
+
+
+def resolve_session_id(db_path: Path, q: str) -> str | None:
+    """
+    Resolve partial session_id to full session_id. Returns exact match or unique suffix match.
+    e.g. 'dba17e07' -> 'web-dba17e07' if unique. Returns None if no match or ambiguous.
+    """
+    if not q or not db_path.exists():
+        return None
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT session_id FROM memory_long_term WHERE session_id = ? OR session_id LIKE ? GROUP BY session_id",
+            (q.strip(), f"%{q.strip()}"),
+        )
+        rows = cur.fetchall()
+        if len(rows) == 1:
+            return rows[0][0]
+        return None
+    finally:
+        conn.close()
+
+
+def insert(
+    db_path: Path,
+    session_id: str,
+    role: str,
+    content: str,
+) -> None:
+    """Insert conversation message."""
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO memory_long_term (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+            (session_id, role, content, time.time()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_recent(db_path: Path, session_id: str, limit: int = 20) -> list[dict]:
+    """Get recent messages for context injection. Returns [{role, content}, ...] in chronological order (oldest of the recent set first)."""
+    if not db_path.exists():
+        return []
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT role, content FROM memory_long_term WHERE session_id = ? ORDER BY created_at DESC LIMIT ?",
+            (session_id, limit),
+        )
+        rows = cur.fetchall()
+        return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
+    finally:
+        conn.close()
+
+
+def get_messages(db_path: Path, session_id: str, limit: int = 200) -> list[dict]:
+    """Get full message list for a session (for display/fork). Returns [{role, content}, ...]."""
+    if not db_path.exists():
+        return []
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT role, content FROM memory_long_term WHERE session_id = ? ORDER BY created_at ASC LIMIT ?",
+            (session_id, limit),
+        )
+        return [{"role": row[0], "content": row[1]} for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def delete_by_session(db_path: Path, session_id: str) -> int:
+    """Delete all messages for a session. Returns deleted count."""
+    if not db_path.exists():
+        return 0
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute("DELETE FROM memory_long_term WHERE session_id = ?", (session_id,))
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def copy_to_new_session(db_path: Path, old_session_id: str, new_session_id: str) -> int:
+    """Copy all messages from old session to new. Returns copied count."""
+    if not db_path.exists():
+        return 0
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO memory_long_term (session_id, role, content, created_at) "
+            "SELECT ?, role, content, created_at FROM memory_long_term WHERE session_id = ?",
+            (new_session_id, old_session_id),
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def list_sessions(db_path: Path, limit: int = 50) -> list[dict]:
+    """List sessions with message count and last updated. Returns [{id, message_count, updated_at}, ...]."""
+    if not db_path.exists():
+        return []
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute(
+            """
+            SELECT session_id, COUNT(*) as cnt, MAX(created_at) as updated
+            FROM memory_long_term GROUP BY session_id
+            ORDER BY updated DESC LIMIT ?
+            """,
+            (limit,),
+        )
+        return [
+            {"id": row[0], "message_count": row[1], "updated_at": row[2]}
+            for row in cur.fetchall()
+        ]
+    finally:
+        conn.close()
