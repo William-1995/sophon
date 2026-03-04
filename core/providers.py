@@ -2,11 +2,14 @@
 LLM Providers - OpenAI-compatible API (DeepSeek, Qwen).
 """
 
+import logging
 import os
 from abc import ABC, abstractmethod
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 _TOOL_CHOICE_REQUIRED = "required"
 
@@ -98,7 +101,7 @@ class OpenAICompatibleProvider(BaseProvider):
                 "function": {"name": fn.get("name", ""), "arguments": fn.get("arguments", "{}")},
             })
         if tools and not result["tool_calls"] and result["content"]:
-            print(f"[provider] tools sent but 0 tool_calls, msg_keys={list(msg.keys())}")
+            logger.warning("tools sent but 0 tool_calls returned, msg_keys=%s", list(msg.keys()))
         return result
 
 

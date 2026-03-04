@@ -27,8 +27,9 @@ FOLLOW_UP_MSG = (
 
 # Summarize prompt sent after observations are collected
 SUMMARIZE_MSG = (
-    "Based on the tool results above, provide a concise direct final answer "
-    "to the user. No further tool calls."
+    "Based on the tool results above, provide a direct final answer to the user. "
+    "Do NOT add meta-phrases like 'According to deep research' or similar. "
+    "No further tool calls."
 )
 
 # ── Tool builder section limits (characters) ──────────────────────────────────

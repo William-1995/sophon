@@ -280,6 +280,41 @@
 .message-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .message-body a { color: var(--accent); text-decoration: none; }
 .message-body a:hover { text-decoration: underline; }
+
+.message-references {
+  margin-top: 12px;
+  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.message-references summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  background: var(--hover);
+  list-style: none;
+  user-select: none;
+}
+.message-references summary::-webkit-details-marker { display: none; }
+.message-references summary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.message-references[open] summary::before {
+  transform: rotate(90deg);
+}
+.message-references ul {
+  margin: 0;
+  padding: 8px 12px 8px 24px;
+  list-style: none;
+}
+.message-references li { margin: 4px 0; }
+.message-references a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.message-references a:hover { text-decoration: underline; }
 .message-body table {
   border-collapse: collapse;
   width: 100%;

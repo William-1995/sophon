@@ -1,9 +1,9 @@
 ---
 name: troubleshoot
-description: Logs, traces, metrics. Orchestrates log-analyze, trace, metrics primitives. Fetches data, frontend renders charts.
+description: System anomalies, errors, latency diagnosis. Logs, traces, metrics. Orchestrates log-analyze, trace, metrics primitives. Fetches data, frontend renders charts.
 metadata:
   type: feature
-  dependencies: "log-analyze,trace,metrics"
+  dependencies: "log-analyze,trace,metrics,deep-recall"
 ---
 
 ## Orchestration Guidance

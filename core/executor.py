@@ -18,6 +18,7 @@ DEFAULT_TIMEOUT = 30
 # Heavy skills (multi-LLM, web fetch) need longer timeouts
 _SKILL_TIMEOUTS: dict[str, int] = {
     "deep-research": 300,
+    "crawler": 60,
 }
 
 
@@ -52,6 +53,7 @@ async def run_script(
     run_env = os.environ.copy()
     project_root = Path(__file__).resolve().parent.parent
     run_env["PYTHONPATH"] = str(project_root) + os.pathsep + run_env.get("PYTHONPATH", "")
+    run_env["SOPHON_ROOT"] = str(project_root)
     if env:
         run_env.update(env)
     proc = await asyncio.create_subprocess_exec(
@@ -86,17 +88,25 @@ async def execute_skill(
     user_id: str = "default_user",
     root: Path | None = None,
     db_path: Path | None = None,
+    call_stack: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Execute a skill action. Returns result dict.
     Writes trace and log to SQLite when db_path provided.
+    call_stack: stack of skill names for cycle detection (feature skill -> primitive).
     """
     import time
+    stack = call_stack or []
+    if skill_name in stack:
+        cycle_msg = f"Cycle detected: {skill_name} already in call stack {stack}"
+        logger.warning("[executor] %s", cycle_msg)
+        return {"error": cycle_msg}
+
     loader = get_skill_loader(root)
     skill = loader.get_skill(skill_name)
     if not skill:
         return {"error": f"Unknown skill: {skill_name}"}
-    print(f"[executor] skill={skill_name} action={action} arguments={arguments}")
+    logger.info("skill=%s action=%s arguments=%s", skill_name, action, arguments)
     skill_dir = Path(skill["dir"])
     scripts_dir = skill_dir / "scripts"
     script_name = f"{action}.py"
@@ -106,15 +116,44 @@ async def execute_skill(
             script_path = skill_dir / s
             break
     if not script_path or not script_path.exists():
-        return {"error": f"Action {action} not found in {skill_name}"}
+        available = [
+            Path(s).stem
+            for s in skill.get("scripts", [])
+            if not s.startswith("_") and s.endswith(".py")
+        ]
+        logger.warning(
+            "action_not_found skill=%s action=%s available=%s",
+            skill_name, action, available,
+        )
+        return {
+            "error": (
+                f"Action '{action}' does not exist in skill '{skill_name}'. "
+                f"Available actions: {available}. "
+                f"Please retry with a valid action."
+            )
+        }
     params = dict(arguments)
     params["workspace_root"] = str(workspace_root)
     params["user_id"] = user_id
     params["_executor_session_id"] = session_id
+    params["_call_stack"] = stack + [skill_name]
     if "session_id" not in arguments:
         params["session_id"] = None
     if db_path:
         params["db_path"] = str(db_path)
+    mcp_servers = skill.get("mcp") or []
+    if mcp_servers:
+        from mcp_client.bridge_server import get_bridge_base_url
+        bridge_url = get_bridge_base_url()
+        if bridge_url:
+            params["_mcp_bridge_url"] = bridge_url.rstrip("/")
+        else:
+            logger.warning(
+                "skill=%s declares mcp=%s but SOPHON_MCP_BRIDGE_URL not set. "
+                "Run MCP bridge separately: python run_mcp_bridge.py",
+                skill_name,
+                mcp_servers,
+            )
     timeout = _SKILL_TIMEOUTS.get(skill_name, DEFAULT_TIMEOUT)
     start = time.time()
     try:

@@ -57,6 +57,11 @@ def _format_obs_line(index: int, obs: str, preview_len: int) -> str:
     return f"Obs {index + 1}: {truncated}"
 
 
+# Only evaluate when there are enough observations to justify an LLM call.
+# A single result rarely needs evaluation — the follow-up round handles it.
+_EVAL_MIN_OBSERVATIONS = 2
+
+
 async def evaluate_observations(
     question: str,
     observations: list[str],
@@ -64,10 +69,12 @@ async def evaluate_observations(
 ) -> tuple[bool, int]:
     """Lightweight eval: do observations suffice to answer?
 
+    Skipped when fewer than _EVAL_MIN_OBSERVATIONS results exist (saves an
+    LLM round-trip for simple single-tool questions).
     Returns (satisfied, tokens_used). Defaults to satisfied=True on any error
     to avoid blocking the agent unnecessarily.
     """
-    if not observations:
+    if len(observations) < _EVAL_MIN_OBSERVATIONS:
         return False, 0
     tail = observations[-EVAL_OBSERVATIONS_TAIL:]
     obs_text = "\n\n".join(

@@ -1,6 +1,8 @@
 """Memory long-term - store conversation history."""
+import json
 import time
 from pathlib import Path
+from typing import Any
 
 from db.schema import get_connection
 
@@ -31,13 +33,15 @@ def insert(
     session_id: str,
     role: str,
     content: str,
+    references: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Insert conversation message."""
+    """Insert conversation message. references: optional [{title, url}] for assistant role."""
+    refs_json = json.dumps(references, ensure_ascii=False) if references else None
     conn = get_connection(db_path)
     try:
         conn.execute(
-            "INSERT INTO memory_long_term (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
-            (session_id, role, content, time.time()),
+            "INSERT INTO memory_long_term (session_id, role, content, refs_json, created_at) VALUES (?, ?, ?, ?, ?)",
+            (session_id, role, content, refs_json, time.time()),
         )
         conn.commit()
     finally:
@@ -61,16 +65,26 @@ def get_recent(db_path: Path, session_id: str, limit: int = 20) -> list[dict]:
 
 
 def get_messages(db_path: Path, session_id: str, limit: int = 200) -> list[dict]:
-    """Get full message list for a session (for display/fork). Returns [{role, content}, ...]."""
+    """Get full message list for a session (for display/fork). Returns [{role, content, references?}, ...]."""
     if not db_path.exists():
         return []
     conn = get_connection(db_path)
     try:
         cur = conn.execute(
-            "SELECT role, content FROM memory_long_term WHERE session_id = ? ORDER BY created_at ASC LIMIT ?",
+            "SELECT role, content, refs_json FROM memory_long_term WHERE session_id = ? ORDER BY created_at ASC LIMIT ?",
             (session_id, limit),
         )
-        return [{"role": row[0], "content": row[1]} for row in cur.fetchall()]
+        rows = cur.fetchall()
+        out: list[dict] = []
+        for row in rows:
+            msg: dict = {"role": row[0], "content": row[1]}
+            if len(row) > 2 and row[2]:
+                try:
+                    msg["references"] = json.loads(row[2])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            out.append(msg)
+        return out
     finally:
         conn.close()
 
@@ -95,8 +109,8 @@ def copy_to_new_session(db_path: Path, old_session_id: str, new_session_id: str)
     conn = get_connection(db_path)
     try:
         cur = conn.execute(
-            "INSERT INTO memory_long_term (session_id, role, content, created_at) "
-            "SELECT ?, role, content, created_at FROM memory_long_term WHERE session_id = ?",
+            "INSERT INTO memory_long_term (session_id, role, content, refs_json, created_at) "
+            "SELECT ?, role, content, refs_json, created_at FROM memory_long_term WHERE session_id = ?",
             (new_session_id, old_session_id),
         )
         conn.commit()

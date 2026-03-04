@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sophon V7 - CLI Entry Point.
+Sophon - CLI Entry Point.
 
 Usage: python main.py [question]
        python main.py   # default: "What can you help with?"

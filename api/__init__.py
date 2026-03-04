@@ -1,1 +1,1 @@
-"""V7 API - FastAPI app."""
+"""API - FastAPI app."""

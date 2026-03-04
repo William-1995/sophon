@@ -19,6 +19,11 @@ interface Session {
   updated_at: number | null
 }
 
+interface Reference {
+  title?: string
+  url: string
+}
+
 interface Message {
   role: 'user' | 'assistant'
   content: string
@@ -26,6 +31,7 @@ interface Message {
   cacheHit?: boolean
   tokens?: number
   genUi?: { type: string; payload?: unknown }
+  references?: Reference[]
 }
 
 function App() {
@@ -61,30 +67,20 @@ function App() {
   const fetchMessages = useCallback(async (sessionId: string) => {
     const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/messages`)
     const data = await res.json()
-    const baseMsgs = (data.messages || []).map((m: { role: string; content: string }) => ({
+    const baseMsgs = (data.messages || []).map((m: { role: string; content: string; references?: Reference[] }) => ({
       role: m.role as 'user' | 'assistant',
-      content: m.content
+      content: m.content,
+      references: Array.isArray(m.references) ? m.references : undefined
     }))
     try {
       const stored = localStorage.getItem(GEN_UI_PREFIX + sessionId)
       const genUiMap: Record<string, unknown> = stored ? JSON.parse(stored) : {}
       const isValidGenUi = (v: unknown): v is { type: string; payload?: unknown } =>
         v != null && typeof v === 'object' && 'type' in v && (v as { payload?: unknown }).payload != null
-      const assistantIndices = baseMsgs.map((m: { role: string }, i: number) => (m.role === 'assistant' ? i : -1)).filter((idx: number) => idx >= 0)
-      const lastAssistantIdx = assistantIndices[assistantIndices.length - 1]
       let ai = 0
-      const msgs = baseMsgs.map((m: { role: string; content: string }, idx: number) => {
+      const msgs = baseMsgs.map((m: { role: string; content: string; references?: Reference[] }) => {
         if (m.role !== 'assistant') return m
-        let gu = genUiMap[String(ai)]
-        if (!isValidGenUi(gu) && idx === lastAssistantIdx) {
-          const keys = Object.keys(genUiMap).map(Number).sort((a, b) => b - a)
-          for (const k of keys) {
-            if (isValidGenUi(genUiMap[String(k)])) {
-              gu = genUiMap[String(k)]
-              break
-            }
-          }
-        }
+        const gu = genUiMap[String(ai)]
         ai += 1
         return { ...m, genUi: isValidGenUi(gu) ? gu : undefined }
       })
@@ -241,6 +237,7 @@ function App() {
       let finalTokens = 0
       let finalCacheHit = false
       let finalGenUi: Message['genUi'] = undefined
+      let finalReferences: Reference[] = []
       let finalSessionId = sessionId
 
       const processAgUiEvent = (data: Record<string, unknown>) => {
@@ -258,6 +255,7 @@ function App() {
           finalTokens = (result.tokens as number) ?? 0
           finalCacheHit = (result.cache_hit as boolean) ?? false
           if (result.gen_ui != null) finalGenUi = result.gen_ui as Message['genUi']
+          if (Array.isArray(result.references)) finalReferences = result.references as Reference[]
         } else if (type === 'RUN_ERROR') {
           throw new Error((data.message as string) ?? 'Unknown error')
         }
@@ -269,6 +267,7 @@ function App() {
           finalTokens = (data.tokens as number) ?? 0
           finalCacheHit = (data.cache_hit as boolean) ?? false
           finalGenUi = data.gen_ui as Message['genUi'] | undefined
+          if (Array.isArray(data.references)) finalReferences = data.references as Reference[]
         }
         if (type === 'error') throw new Error((data.error as string) ?? 'Unknown error')
       }
@@ -313,7 +312,8 @@ function App() {
           content: finalAnswer,
           cacheHit: finalCacheHit,
           tokens: finalTokens,
-          genUi: finalGenUi
+          genUi: finalGenUi,
+          references: finalReferences.length ? finalReferences : undefined
         }]
         if (finalGenUi && finalSessionId) {
           try {
@@ -341,7 +341,7 @@ function App() {
 
   const LINE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
   const labelFromKind = (kind: string) => kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-  const parseA2uiValueMap = (arr: { key: string; valueString?: string; valueNumber?: number; valueMap?: unknown[] }[]): Record<string, unknown> => {
+  const parseA2uiValueMap = (arr: { key: string; valueString?: string; valueNumber?: number; valueMap?: unknown[] }[]): Record<string, unknown> | unknown[] => {
     const out: Record<string, unknown> = {}
     for (const e of arr) {
       if (e.valueMap != null) out[e.key] = parseA2uiValueMap(e.valueMap as { key: string; valueString?: string; valueNumber?: number; valueMap?: unknown[] }[])
@@ -358,7 +358,8 @@ function App() {
     const chartsEntry = dm.dataModelUpdate.contents.find((c: { key: string }) => c.key === 'charts') as { valueMap?: { key: string; valueMap?: unknown[] }[] }
     if (!chartsEntry?.valueMap) return []
     return chartsEntry.valueMap.map((item) => {
-      const data = parseA2uiValueMap((item.valueMap ?? []) as { key: string; valueString?: string; valueNumber?: number; valueMap?: unknown[] }[]) as Record<string, unknown>
+      const raw = parseA2uiValueMap((item.valueMap ?? []) as { key: string; valueString?: string; valueNumber?: number; valueMap?: unknown[] }[])
+      const data = (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) ? raw : {} as Record<string, unknown>
       return {
         kind: String(data.kind ?? 'chart'),
         labels: Array.isArray(data.labels) ? data.labels.map(String) : undefined,
@@ -471,8 +472,8 @@ function App() {
             {seriesKeys.length > 1 ? (
               <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
                 <Legend />
                 {seriesKeys.map((key, i) => (
@@ -482,8 +483,8 @@ function App() {
             ) : (
               <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
                 {seriesKeys.length > 0 ? (
                   <>
@@ -493,7 +494,7 @@ function App() {
                     <Legend />
                   </>
                 ) : (
-                  <Line type="monotone" dataKey="value" stroke="#3b82f6" />
+                  <Line type="monotone" dataKey="value" stroke="#3b82f6" dot={{ r: 2 }} isAnimationActive={false} strokeWidth={2} />
                 )}
               </LineChart>
             )}
@@ -552,11 +553,11 @@ function App() {
     window.addEventListener('pointermove', onMove)
   }, [orbPos])
 
-  const handleOrbPointerUp = useCallback((e: React.PointerEvent) => {
+  const handleOrbPointerUp = useCallback((_e: React.PointerEvent) => {
     orbListenersRef.current?.cleanup()
   }, [])
 
-  const handleOrbPointerCancel = useCallback((e: React.PointerEvent) => {
+  const handleOrbPointerCancel = useCallback((_e: React.PointerEvent) => {
     orbListenersRef.current?.cleanup()
   }, [])
 
@@ -595,6 +596,20 @@ function App() {
                 <div className="message-body">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
                 </div>
+                {m.role === 'assistant' && m.references && m.references.length > 0 && (
+                  <details className="message-references">
+                    <summary>References ({m.references.length})</summary>
+                    <ul>
+                      {m.references.map((ref, j) => (
+                        <li key={j}>
+                          <a href={ref.url} target="_blank" rel="noopener noreferrer">
+                            {ref.title || ref.url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </div>
             ))}
             {loading && (

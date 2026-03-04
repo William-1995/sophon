@@ -104,6 +104,16 @@ END;
 """
 
 
+def _add_memory_references_column(conn: sqlite3.Connection) -> None:
+    """Add refs_json column to memory_long_term if missing (migration)."""
+    cur = conn.execute("PRAGMA table_info(memory_long_term)")
+    cols = [row[1] for row in cur.fetchall()]
+    if "refs_json" not in cols:
+        conn.execute("ALTER TABLE memory_long_term ADD COLUMN refs_json TEXT")
+        conn.commit()
+        logger.info("memory_long_term: added refs_json column")
+
+
 def _ensure_memory_fts(conn: sqlite3.Connection) -> None:
     """Create FTS5 table and triggers if missing, then rebuild index from memory_long_term."""
     cur = conn.execute(
@@ -129,6 +139,7 @@ def init_db(db_path: Path) -> None:
     try:
         conn.executescript(_SCHEMA_SQL)
         conn.commit()
+        _add_memory_references_column(conn)
         _ensure_memory_fts(conn)
         logger.info("Database initialized: %s", db_path)
     finally:

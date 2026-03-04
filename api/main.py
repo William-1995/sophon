@@ -1,5 +1,5 @@
 """
-FastAPI app for Sophon V7.
+FastAPI app for Sophon.
 
 Endpoints:
 - GET  /api/skills
@@ -39,8 +39,7 @@ from core.providers import get_provider
 from core.react import run_react
 from db.schema import ensure_db_ready
 from db import memory_long_term
-
-app = FastAPI(title="Sophon V7", version="0.1.0")
+app = FastAPI(title="Sophon", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -66,6 +65,7 @@ class ChatResponse(BaseModel):
     cache_hit: bool = False
     tokens: int = 0
     gen_ui: dict | None = None
+    references: list[dict] | None = None
 
 
 def _parse_messages(messages: list[dict]) -> tuple[str, list[dict], str]:
@@ -338,15 +338,17 @@ async def chat(req: ChatRequest):
             context=context if context else None,
             db_path=db_path,
         )
+        refs = meta.get("references") or []
         if db_path.exists():
             memory_long_term.insert(db_path, session_id, "user", req.message)
-            memory_long_term.insert(db_path, session_id, "assistant", answer)
+            memory_long_term.insert(db_path, session_id, "assistant", answer, references=refs if refs else None)
         return ChatResponse(
             answer=answer,
             session_id=session_id,
             cache_hit=meta.get("cache_hit", False),
             tokens=meta.get("tokens", 0),
             gen_ui=meta.get("gen_ui"),
+            references=refs if refs else None,
         )
     except Exception as e:
         if db_path.exists():
@@ -425,25 +427,29 @@ async def _stream_chat_gen(req: ChatRequest):
                 db_path=db_path,
                 progress_callback=on_progress,
             )
+            refs = meta.get("references") or []
             if db_path.exists():
                 memory_long_term.insert(db_path, session_id, "user", req.message)
-                memory_long_term.insert(db_path, session_id, "assistant", answer)
+                memory_long_term.insert(db_path, session_id, "assistant", answer, references=refs if refs else None)
             queue.put_nowait({"type": "TEXT_MESSAGE_START", "messageId": msg_id, "role": "assistant"})
             queue.put_nowait({"type": "TEXT_MESSAGE_CONTENT", "messageId": msg_id, "delta": answer})
             queue.put_nowait({"type": "TEXT_MESSAGE_END", "messageId": msg_id})
             gen_ui = meta.get("gen_ui")
             if gen_ui:
                 queue.put_nowait({"type": "CUSTOM", "name": "gen_ui", "value": gen_ui})
+            result_payload: dict = {
+                "session_id": session_id,
+                "tokens": meta.get("tokens", 0),
+                "cache_hit": meta.get("cache_hit", False),
+                "gen_ui": gen_ui,
+            }
+            if refs:
+                result_payload["references"] = refs
             queue.put_nowait({
                 "type": "RUN_FINISHED",
                 "threadId": session_id,
                 "runId": run_id,
-                "result": {
-                    "session_id": session_id,
-                    "tokens": meta.get("tokens", 0),
-                    "cache_hit": meta.get("cache_hit", False),
-                    "gen_ui": gen_ui,
-                },
+                "result": result_payload,
             })
         except Exception as e:
             if db_path.exists():
@@ -463,9 +469,12 @@ async def _stream_chat_gen(req: ChatRequest):
                 break
             yield _ag_ui_encode(item)
     finally:
-        exc = task.exception()
-        if exc:
-            yield _ag_ui_encode({"type": "RUN_ERROR", "message": str(exc)})
+        try:
+            exc = task.exception() if task.done() else None
+            if exc:
+                yield _ag_ui_encode({"type": "RUN_ERROR", "message": str(exc)})
+        except (asyncio.InvalidStateError, asyncio.CancelledError):
+            pass
 
 
 @app.post("/api/chat/stream")

@@ -24,12 +24,17 @@ def main() -> None:
         print(json.dumps({"result": "No results found."}))
         return
     lines = []
+    sources = []
     for i, item in enumerate(results, 1):
         title = item.get("title", "")
         link = item.get("href", item.get("link", ""))
         snippet = item.get("body", item.get("snippet", ""))
         lines.append(f"{i}. {title}\n   {link}\n   {snippet}")
-    print(json.dumps({"result": "\n\n".join(lines)}))
+        if link:
+            sources.append({"title": title or link, "url": link})
+    result_text = "\n\n".join(lines)
+    references = [{"title": s["title"] or s["url"], "url": s["url"]} for s in sources]
+    print(json.dumps({"result": result_text, "sources": sources, "references": references, "observation": result_text}))
 
 
 if __name__ == "__main__":

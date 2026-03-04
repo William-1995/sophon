@@ -59,12 +59,17 @@ def build_tools_from_skills(
 
 
 def _extract_section(body: str, heading: str, max_chars: int) -> str | None:
-    """Extract content of a ## heading section, truncated to max_chars."""
+    """Extract content of a ## heading section, truncated to max_chars.
+
+    Stops at the next ## heading (but not ### subheadings within the section).
+    """
+    import re
     marker = f"## {heading}"
     if marker not in body:
         return None
     after = body.split(marker, 1)[1]
-    section = after.split("##")[0].strip()
+    # Split on lines that start with exactly "## " (not "### " or deeper)
+    section = re.split(r"\n(?=## )", after)[0].strip()
     return section[:max_chars] if section else None
 
 
@@ -84,7 +89,8 @@ def _enrich_description(base_desc: str, body: str) -> str:
             sections.append(f"{label}:\n{text}")
 
     if not sections and "## " in body:
-        fallback = body.split("## ", 1)[1].split("##")[0].strip()
+        import re
+        fallback = re.split(r"\n(?=## )", body.split("## ", 1)[1])[0].strip()
         if fallback:
             sections.append(fallback[:TOOL_FALLBACK_SECTION_MAX])
 

@@ -21,6 +21,33 @@ logger = logging.getLogger(__name__)
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
+def _validate_dep_graph_acyclic(index: dict[str, dict[str, Any]]) -> None:
+    """Raise if dependency graph contains a cycle. Index: skill_key -> entry with dependencies."""
+    visited: set[str] = set()
+
+    def _visit(key: str, path: set[str]) -> None:
+        if key in path:
+            raise ValueError(f"Skill dependency cycle detected involving: {key}")
+        if key in visited or key not in index:
+            return
+        path.add(key)
+        try:
+            for dep in index[key].get("dependencies") or []:
+                dep_key = (dep.strip() if isinstance(dep, str) else str(dep)).strip()
+                if not dep_key:
+                    continue
+                alt = dep_key.replace("_", "-")
+                dep_resolved = dep_key if dep_key in index else (alt if alt in index else None)
+                if dep_resolved:
+                    _visit(dep_resolved, path)
+        finally:
+            path.discard(key)
+            visited.add(key)
+
+    for skill_key in index:
+        _visit(skill_key, set())
+
+
 def _get_skills_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
@@ -143,6 +170,7 @@ class SkillLoader:
                 entry = self._load_skill_entry(skill_dir, skill_md, subdir)
                 result[skill_dir.name] = entry
 
+        _validate_dep_graph_acyclic(result)
         self._cache[root_key] = result
         return result
 
@@ -164,12 +192,19 @@ class SkillLoader:
             if isinstance(raw_deps, str) and raw_deps
             else (raw_deps if isinstance(raw_deps, list) else [])
         )
+        raw_mcp = meta.get("mcp", "")
+        mcp_servers: list[str] = (
+            [x.strip() for x in raw_mcp.split(",") if x.strip()]
+            if isinstance(raw_mcp, str) and raw_mcp
+            else (raw_mcp if isinstance(raw_mcp, list) else [])
+        )
 
         entry: dict[str, Any] = {
             "name": name,
             "description": description[:SKILL_DESCRIPTION_MAX_LEN],
             "type": skill_type,
             "dependencies": deps,
+            "mcp": mcp_servers,
             "dir": str(skill_dir.absolute()),
             "skill_file_path": str(skill_md.absolute()),
             "scripts": _scan_scripts(skill_dir),
@@ -282,7 +317,7 @@ class SkillLoader:
             return []
 
         load_order = self._compute_load_order(primaries, index)
-        print(f"[skill_loader] load_order={load_order}")
+        logger.debug("load_order=%s", load_order)
         return self._brief_from_load_order(load_order, index)
 
     def get_skill(self, skill_name: str) -> dict[str, Any] | None:

@@ -3,10 +3,14 @@
 import json
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 
 from constants import DB_FILENAME
 from db.metrics import query as query_metrics
+
+# Auto-bucket when raw point count exceeds this threshold
+_AUTO_BUCKET_THRESHOLD = 100
 
 
 def _ts_to_date(ts) -> str | None:
@@ -24,6 +28,25 @@ def _resolve_db_path(params: dict) -> Path:
     if p:
         return Path(p)
     return Path(params.get("workspace_root", "")) / DB_FILENAME
+
+
+def _bucket_by_hour(data: list[dict]) -> list[dict]:
+    """Average data points into hourly buckets to keep chart readable."""
+    buckets: dict[int, list[float]] = defaultdict(list)
+    for d in data:
+        ts = d.get("timestamp")
+        val = d.get("value")
+        if ts is not None and val is not None:
+            hour_key = int(ts) // 3600 * 3600
+            buckets[hour_key].append(float(val))
+    return [
+        {
+            "timestamp": hour_ts,
+            "value": round(sum(vals) / len(vals), 2),
+            "date": time.strftime("%m-%d %H:00", time.localtime(hour_ts)),
+        }
+        for hour_ts, vals in sorted(buckets.items())
+    ]
 
 
 def main() -> None:
@@ -53,7 +76,13 @@ def main() -> None:
             until = None
     data = query_metrics(db_path, name=name, since=since, until=until, aggregation=aggregation, limit=limit)
     for d in data:
-        d["date"] = _ts_to_date(d.get("timestamp"))
+        if "date" not in d:
+            d["date"] = _ts_to_date(d.get("timestamp"))
+
+    # Auto-aggregate into hourly buckets when too many raw points
+    if len(data) > _AUTO_BUCKET_THRESHOLD and not aggregation:
+        data = _bucket_by_hour(data)
+
     result: dict = {"name": name, "data": data}
     if data:
         ts_list = [d.get("timestamp") for d in data if d.get("timestamp") is not None]
@@ -65,9 +94,15 @@ def main() -> None:
                 "max_timestamp": max(ts_list),
             }
     if data and "value" in data[0]:
-        x = [d.get("date") or _ts_to_date(d.get("timestamp")) for d in data]
-        y = [d.get("value", 0) for d in data]
-        result["gen_ui"] = {"type": "line", "payload": {"data": {"x": x, "y": y}}}
+        dr = result.get("date_range", {})
+        vals = [d["value"] for d in data if "value" in d]
+        summary = (
+            f"metric={name} points={len(data)} "
+            f"min={min(vals):.1f} max={max(vals):.1f} avg={sum(vals)/len(vals):.1f} "
+            f"from={dr.get('min_date', '')} to={dr.get('max_date', '')}"
+        )
+        rows = [f"[{d.get('date', '')}] {d['value']:.1f}" for d in data if "value" in d]
+        result["observation"] = summary + "\n" + "\n".join(rows)
     print(json.dumps(result))
 
 

@@ -1,4 +1,4 @@
-"""V7 Database module - SQLite for logs, traces, metrics, memory."""
+"""Database module - SQLite for logs, traces, metrics, memory."""
 
 from .schema import init_db, get_connection
 

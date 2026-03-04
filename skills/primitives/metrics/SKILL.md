@@ -1,6 +1,6 @@
 ---
 name: metrics
-description: Record and query numeric metrics for dashboards, charts, trends.
+description: Query and record numeric metrics — latency, throughput, error rates, skill_latency_ms, performance trends. Use when asked about system delays, latency, performance data, or time-series charts.
 metadata:
   type: primitive
   dependencies: ""

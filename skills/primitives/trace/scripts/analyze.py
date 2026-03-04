@@ -81,8 +81,6 @@ def main() -> None:
             "span_count": len(rows),
             "slowest_operations": slowest,
         }
-        if slowest:
-            result["gen_ui"] = {"type": "bar", "payload": {"labels": [x["operation"] for x in slowest], "values": [x["duration_ms"] for x in slowest]}}
     elif metric == "operations":
         ops = [f"{r.get('skill','')}.{r.get('action','')}" or "unknown" for r in rows]
         counts = Counter(ops)
@@ -96,8 +94,6 @@ def main() -> None:
             "total_operations": len(rows),
             "operation_breakdown": breakdown,
         }
-        if breakdown:
-            result["gen_ui"] = {"type": "bar", "payload": {"labels": [x["operation"] for x in breakdown], "values": [x["count"] for x in breakdown]}}
     elif metric == "errors":
         errs = [r for r in rows if r.get("metadata") and "error" in str(r.get("metadata", "")).lower()]
         result = {

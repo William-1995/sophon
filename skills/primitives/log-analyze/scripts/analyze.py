@@ -70,10 +70,6 @@ def main() -> None:
         "time_series": time_series,
         "total": len(rows),
     }
-    if by_level:
-        result["gen_ui"] = {"type": "bar", "payload": {"labels": list(by_level.keys()), "values": list(by_level.values())}}
-    elif time_series:
-        result["gen_ui"] = {"type": "line", "payload": {"data": {"x": [d["date"] for d in time_series], "y": [d["count"] for d in time_series]}}}
     print(json.dumps(result))
 
 

@@ -5,6 +5,7 @@ Manages lifecycle of one MCP server process (stdio) and provides
 list_tools / call_tool operations.
 """
 
+import os
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
@@ -16,6 +17,16 @@ from config import MCPServerConfig
 from mcp_client.adapter import mcp_tool_to_openai_format, parse_prefixed_tool_name
 
 logger = logging.getLogger(__name__)
+
+
+def _build_env(config: MCPServerConfig) -> dict[str, str] | None:
+    """Build env dict for stdio subprocess from MCPServerConfig.env."""
+    if not config.env:
+        return None
+    base = dict(os.environ)
+    for k, v in config.env:
+        base[k] = v
+    return base
 
 
 class MCPServerClient:
@@ -36,12 +47,12 @@ class MCPServerClient:
 
     @property
     def prefix(self) -> str:
-        """Tool name prefix (e.g. 'ddg_')."""
+        """Tool name prefix (e.g. 'firecrawl_')."""
         return self._prefix
 
     @property
     def server_name(self) -> str:
-        """Server identifier (e.g. 'ddg')."""
+        """Server identifier (e.g. 'firecrawl')."""
         return self._config.name
 
     @asynccontextmanager
@@ -51,10 +62,14 @@ class MCPServerClient:
         Yields:
             ClientSession: Initialized MCP session. Call initialize() before use.
         """
-        params = StdioServerParameters(
-            command=self._config.command,
-            args=list(self._config.args),
-        )
+        kwargs: dict[str, Any] = {
+            "command": self._config.command,
+            "args": list(self._config.args),
+        }
+        env = _build_env(self._config)
+        if env is not None:
+            kwargs["env"] = env
+        params = StdioServerParameters(**kwargs)
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()

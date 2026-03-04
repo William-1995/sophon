@@ -8,7 +8,9 @@ metadata:
 
 ## Orchestration Guidance
 
-When the user asks to save or write "my question", "what I asked", "the previous message", "what I just said", or similar without providing the content: (1) Prioritize the most recent rounds (default 3; configurable via referent_context_rounds)—e.g. "write to local" after you just gave a plan means the assistant's last response. (2) If needed, call memory.read (omit session_id) to retrieve it. (3) If still uncertain, ask the user to specify the content before writing.
+There is no `search` action. To find files by name or pattern, use `list` with `filter_pattern` and `recursive: true`.
+
+When the user asks to save or write "my question", "what I asked", "the previous message", "what I just said", or similar without providing the content: (1) Prioritize the most recent rounds (default 3; configurable via referent_context_rounds) — e.g. "write to local" after you just gave a plan means the assistant's last response. (2) If needed, call memory.read (omit session_id) to retrieve it. (3) If still uncertain, ask the user to specify the content before writing.
 
 ## Workspace
 
@@ -20,17 +22,17 @@ When the user asks to save or write "my question", "what I asked", "the previous
 ## Tools
 
 ### list
-List files and directories in workspace.
+List files and directories in workspace. Also use this to search or find files by name pattern — there is no separate search action.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | path | string | No | Directory path (default: "." meaning workspace root) |
 | sort_by | string | No | Sort by: "name", "size", "mtime" (default: "name") |
 | order | string | No | Order: "asc" or "desc" (default: "asc") |
-| filter_pattern | string | No | Filter pattern like "*.py", "*.txt" |
+| filter_pattern | string | No | Glob pattern to filter by name, e.g. "*.py", "report-*.md" |
 | recursive | boolean | No | Recursive listing (default: false) |
 
-**CRITICAL**: Use `recursive: true` to get ALL files including subdirectories. DO NOT call list multiple times - use recursive once.
+To find files by name or extension, use `filter_pattern` with `recursive: true`. Do not call list multiple times — one recursive call is sufficient.
 
 ### read
 Read file content from workspace.
