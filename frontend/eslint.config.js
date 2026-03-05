@@ -19,5 +19,12 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      complexity: ['warn', { max: 20 }],
+      'max-lines-per-function': ['warn', { max: 120, skipBlankLines: true, skipComments: true }],
+      'max-depth': ['warn', { max: 4 }],
+      'react-hooks/set-state-in-effect': 'off', // Data fetch + sync from localStorage are valid
+      'react-hooks/preserve-manual-memoization': 'off', // React Compiler; we use explicit deps
+    },
   },
 ])

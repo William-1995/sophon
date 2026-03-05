@@ -489,6 +489,16 @@ async def chat_async(req: ChatRequest):
     import re
     cfg = get_config()
     db_path = _db_path()
+
+    # Only allow parent->child, not child->child (single level)
+    if req.session_id and db_path.exists():
+        meta = db_session_meta.get(db_path, req.session_id)
+        if meta and meta.get("parent_id") is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot run background task from a child session. Switch to parent session first.",
+            )
+
     child_session_id = _new_session_id()
     parent_session_id = req.session_id
     title = (req.message.strip()[:80] + "…") if len(req.message.strip()) > 80 else req.message.strip()
