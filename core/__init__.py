@@ -1,1 +1,1 @@
-"""Core - ReAct engine, skill loader, providers."""
+"""Sophon Core - ReAct engine, skill loader, providers."""

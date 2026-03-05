@@ -29,6 +29,7 @@ def _search(db_path: str, keyword: str, limit: int | None) -> list:
             "content": r["content"][:_CONTENT_PREVIEW],
         }
         for r in rows
+        if not (r["content"] or "").startswith("[Background] ")
     ]
 
 

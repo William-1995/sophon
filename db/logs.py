@@ -15,7 +15,7 @@ def insert(
 ) -> None:
     """Insert log entry."""
     import time
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         conn.execute(
             "INSERT INTO logs (timestamp, level, message, session_id, metadata) VALUES (?, ?, ?, ?, ?)",
@@ -41,7 +41,7 @@ def query(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     """Query logs. Level can be comma-separated (e.g. 'ERROR,WARN')."""
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         sql = "SELECT id, timestamp, level, message, session_id, metadata FROM logs WHERE 1=1"
         params: list[Any] = []

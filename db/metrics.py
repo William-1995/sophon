@@ -15,7 +15,7 @@ def insert(
     tags: dict | None = None,
 ) -> None:
     """Insert metric point."""
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         conn.execute(
             "INSERT INTO metrics (timestamp, name, value, tags) VALUES (?, ?, ?, ?)",
@@ -35,7 +35,7 @@ def query(
     limit: int = 1000,
 ) -> list[dict[str, Any]]:
     """Query metrics. Returns list of {timestamp, value} or aggregated."""
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         sql = "SELECT timestamp, value FROM metrics WHERE name = ?"
         params: list[Any] = [name]
@@ -67,7 +67,7 @@ def query(
 
 def list_names(db_path: Path) -> list[str]:
     """List metric names."""
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         cur = conn.execute("SELECT DISTINCT name FROM metrics ORDER BY name")
         return [r[0] for r in cur.fetchall()]

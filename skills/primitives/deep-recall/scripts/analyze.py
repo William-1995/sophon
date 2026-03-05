@@ -57,6 +57,7 @@ def main() -> None:
             "content": r["content"][:_CONTENT_PREVIEW],
         }
         for r in rows
+        if not (r["content"] or "").startswith("[Background] ")
     ]
     lines = [f"count={len(messages)} since={datetime.fromtimestamp(since_ts).strftime('%Y-%m-%d')} until={datetime.fromtimestamp(until_ts).strftime('%Y-%m-%d')}"]
     lines.extend(f"[{m['time']}] {m['content']}" for m in messages)

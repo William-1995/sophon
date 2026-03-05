@@ -1,6 +1,6 @@
 ---
 name: capabilities
-description: List available capabilities. Use when user asks what you can do, what are your capabilities, what skills you have.
+description: Introduce Sophon and list available capabilities. Use when the user asks who you are, what you can do, what your capabilities are, or what skills you have.
 metadata:
   type: primitive
   dependencies: ""
@@ -9,4 +9,4 @@ metadata:
 ## Tools
 
 ### list
-Return the list of all available skills (name + description) shown to the user. No arguments needed.
+Return a short introduction of Sophon and the list of all available skills (name + description) shown to the user. No arguments needed.

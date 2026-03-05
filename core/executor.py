@@ -121,17 +121,30 @@ async def execute_skill(
             for s in skill.get("scripts", [])
             if not s.startswith("_") and s.endswith(".py")
         ]
-        logger.warning(
-            "action_not_found skill=%s action=%s available=%s",
-            skill_name, action, available,
-        )
-        return {
-            "error": (
-                f"Action '{action}' does not exist in skill '{skill_name}'. "
-                f"Available actions: {available}. "
-                f"Please retry with a valid action."
+        if len(available) == 1 and action != available[0]:
+            requested = action
+            action = available[0]
+            logger.info(
+                "action_fallback skill=%s requested=%s -> using single action=%s",
+                skill_name, requested, action,
             )
-        }
+            script_path = None
+            for s in skill.get("scripts", []):
+                if s.endswith(f"{action}.py"):
+                    script_path = skill_dir / s
+                    break
+        if not script_path or not script_path.exists():
+            logger.warning(
+                "action_not_found skill=%s action=%s available=%s",
+                skill_name, action, available,
+            )
+            return {
+                "error": (
+                    f"Action '{action}' does not exist in skill '{skill_name}'. "
+                    f"Available actions: {available}. "
+                    f"Please retry with a valid action."
+                )
+            }
     params = dict(arguments)
     params["workspace_root"] = str(workspace_root)
     params["user_id"] = user_id
@@ -141,6 +154,9 @@ async def execute_skill(
         params["session_id"] = None
     if db_path:
         params["db_path"] = str(db_path)
+    if skill_name == "memory" and action == "search":
+        from config import get_config
+        params["_memory_search_default_limit"] = get_config().memory.memory_search_default_limit
     mcp_servers = skill.get("mcp") or []
     if mcp_servers:
         from mcp_client.bridge_server import get_bridge_base_url

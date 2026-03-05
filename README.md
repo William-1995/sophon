@@ -124,6 +124,12 @@ Or manually: `pip install -r requirements.txt && playwright install chromium && 
               +------------------------+
 ```
 
+### Sessions & Sub-agents
+
+- **Skill-as-sub-agent**: feature skills (e.g. `deep-research`, `troubleshoot`) are sub-agents themselves: each runs a lightweight ReAct loop internally, calling primitives as their "tools". The main agent only decides *when to call which skill*; it does not control how skills orchestrate internally.
+- **Parent-child multi-session structure**: each async task (e.g. a background long-running call) creates a child session; parent-child links are stored in `session_meta`. The frontend shows sessions as a tree. You can continue from any child session or return to the parent.
+- **Parallel multi-session**: the main UI supports switching between sessions; async tasks run independently in child sessions. The parent session receives only a summary (e.g. "background troubleshoot done, click to open detailed child session").
+
 ### deep-research Pipeline
 
 ```
@@ -226,38 +232,6 @@ Description of this action.
 | `/api/sessions/{id}/messages` | GET | Session history |
 | `/api/workspace/files` | GET | Workspace file list |
 | `/api/chat` | POST | `{message, skill?, model?}` -> SSE stream |
-
----
-
-## Roadmap
-
-### Shipped
-- [x] ReAct loop with two-phase skill selection
-- [x] Multi-agent architecture: main agent orchestrates, skills own output format
-- [x] Parallel tool execution when LLM emits multiple calls (capped by `max_parallel_tool_calls`)
-- [x] Concurrency safety: path-based file locks, call-stack cycle detection, DAG validation
-- [x] SKILL.md format (Anthropic-compatible)
-- [x] Process isolation per skill execution
-- [x] deep-research: plan → LLM denoise URLs → select → parallel fetch → synthesize
-- [x] deep-recall: memory exploration for all sub-agents
-- [x] Structured references: skills return `references`, merged and deduped by main agent
-- [x] Collapsible references in UI; SQLite persistence for messages with references
-- [x] SQLite persistence: logs, traces, metrics, memory
-- [x] Streaming React frontend with Markdown rendering and charts
-
-### Next
-- [ ] SKILL.md validator and linter (CLI + IDE extension)
-- [ ] Skill registry and marketplace
-- [ ] OpenAI, Claude, and Gemini provider support
-- [ ] Skill versioning and hot-reload without server restart
-- [ ] Agent-to-agent delegation (nested sub-agents)
-- [ ] Multi-user authentication
-
-### Under Consideration
-- Scheduled and event-triggered agents
-- Shared workspace collaboration
-- Voice interface
-- Mobile client
 
 ---
 

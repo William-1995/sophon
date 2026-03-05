@@ -1,4 +1,4 @@
-"""Database module - SQLite for logs, traces, metrics, memory."""
+"""Sophon Database module - SQLite for logs, traces, metrics, memory."""
 
 from .schema import init_db, get_connection
 

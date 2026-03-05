@@ -1,1 +1,1 @@
-"""API - FastAPI app."""
+"""Sophon API - FastAPI app."""

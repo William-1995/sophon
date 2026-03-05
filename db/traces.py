@@ -16,7 +16,7 @@ def insert(
 ) -> None:
     """Insert trace entry."""
     import json
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         conn.execute(
             "INSERT INTO traces (session_id, timestamp, skill, action, tokens, result_preview, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)",

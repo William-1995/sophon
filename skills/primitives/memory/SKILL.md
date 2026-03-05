@@ -23,7 +23,7 @@ Search memory by keywords. Short-term (current session) first, then long-term (c
 - query (str, optional): Search keywords. Omit for date-only filter.
 - session_id (str, optional): Prefer this session (short-term). Omit to use current session first.
 - date_range (object, optional): {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}. Also accepts [start, end] from time.calculate.
-- top_k / limit (int, optional): Number of results, default 5
+- top_k / limit (int, optional): Number of results. Default from config (memory_search_default_limit, typically 200). LLM can override for sliding-window or narrow scope.
 
 ### read
 Read complete memory. Defaults to current session (short-term) when date and session_id omitted.

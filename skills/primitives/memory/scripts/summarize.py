@@ -61,6 +61,8 @@ def main() -> None:
     contents = []
     for r in rows:
         session_id, role, content, created_at = r[0], r[1], r[2], r[3]
+        if role == "user" and (content or "").startswith("[Background] "):
+            continue
         if focus and focus.lower() not in (content or "").lower():
             continue
         contents.append({"session_id": session_id, "role": role, "content": (content or "")[:500], "created_at": created_at, "date": _ts_to_date(created_at)})

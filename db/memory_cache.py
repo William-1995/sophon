@@ -20,7 +20,7 @@ def _question_hash(q: str) -> str:
 def get(db_path: Path, question: str) -> dict | None:
     """Get cached result. Returns None if miss."""
     h = _question_hash(question)
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         cur = conn.execute(
             "SELECT result_json, created_at FROM memory_cache WHERE question_hash = ?",
@@ -37,7 +37,7 @@ def get(db_path: Path, question: str) -> dict | None:
 def set(db_path: Path, question: str, result: dict) -> None:
     """Cache result for question."""
     h = _question_hash(question)
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         conn.execute(
             "INSERT OR REPLACE INTO memory_cache (question_hash, question, result_json, created_at) VALUES (?, ?, ?, ?)",

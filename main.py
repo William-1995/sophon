@@ -21,7 +21,7 @@ if str(_root) not in sys.path:
 from config import bootstrap, get_config, DEFAULT_USER_ID, SESSION_ID_LENGTH
 from core.providers import get_provider
 from core.react import run_react
-from db.schema import ensure_db_ready
+from db.schema import ensure_db_ready, configure_default_database
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ async def main() -> None:
     cfg = get_config()
     db_path = cfg.paths.db_path()
     ensure_db_ready(db_path)
+    configure_default_database(db_path)
 
     question = sys.argv[1] if len(sys.argv) > 1 else "What can you help with?"
     session_id = f"cli-{uuid.uuid4().hex[:SESSION_ID_LENGTH]}"

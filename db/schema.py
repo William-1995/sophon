@@ -12,6 +12,13 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Default database configuration for this process.
+# For now only a single "default" database is supported and only the SQLite
+# backend is implemented. The API is designed so that a PostgreSQL backend can
+# be added later without changing call sites.
+_DB_ENGINE: str = "sqlite"
+_DB_PATH: Optional[Path] = None
+
 _SCHEMA_SQL = """
 -- Logs: agent/system logs for query and analysis
 CREATE TABLE IF NOT EXISTS logs (
@@ -79,6 +86,20 @@ CREATE TABLE IF NOT EXISTS recent_files (
     last_used_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_recent_last_used ON recent_files(last_used_at);
+
+-- Session meta: parent/child and status for async tasks (parent_id NULL = root)
+CREATE TABLE IF NOT EXISTS session_meta (
+    session_id TEXT PRIMARY KEY,
+    parent_id TEXT,
+    title TEXT NOT NULL DEFAULT '',
+    agent TEXT NOT NULL DEFAULT 'main',
+    kind TEXT NOT NULL DEFAULT 'chat',
+    status TEXT NOT NULL DEFAULT 'queued',
+    created_at REAL NOT NULL DEFAULT (unixepoch()),
+    updated_at REAL NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_session_meta_parent ON session_meta(parent_id);
+CREATE INDEX IF NOT EXISTS idx_session_meta_status ON session_meta(status);
 """
 
 _FTS_SQL = """
@@ -146,19 +167,45 @@ def init_db(db_path: Path) -> None:
         conn.close()
 
 
-def get_connection(db_path: Path) -> sqlite3.Connection:
+def configure_default_database(db_path: Path, engine: str = "sqlite") -> None:
     """
-    Get connection to database. Caller must close.
+    Configure the default database backend for this process.
 
     Args:
-        db_path: Path to SQLite file.
+        db_path: Path to the database file when using the SQLite engine.
+        engine: Logical engine name. Only "sqlite" is supported today.
+
+    Raises:
+        ValueError: If an unsupported engine is provided.
+    """
+    global _DB_ENGINE, _DB_PATH
+    if engine != "sqlite":
+        # TODO: Support a PostgreSQL backend.
+        raise ValueError(f"Unsupported database engine: {engine}")
+    _DB_ENGINE = engine
+    _DB_PATH = db_path
+
+
+def get_connection() -> sqlite3.Connection:
+    """
+    Get a connection to the configured default database. Caller must close.
+
+    Args:
+        None.
 
     Returns:
         sqlite3.Connection
     """
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    return conn
+    if _DB_ENGINE == "sqlite":
+        if _DB_PATH is None:
+            raise RuntimeError("Default database is not configured. Call configure_default_database() first.")
+        conn = sqlite3.connect(str(_DB_PATH))
+        conn.row_factory = sqlite3.Row
+        return conn
+    if _DB_ENGINE == "postgres":
+        # TODO: Implement PostgreSQL backend and return a pooled connection.
+        raise NotImplementedError("PostgreSQL backend is not implemented yet.")
+    raise RuntimeError(f"Unsupported database engine: {_DB_ENGINE}")
 
 
 def rebuild_memory_fts(db_path: Path) -> None:

@@ -43,7 +43,13 @@ def main() -> None:
     args = params.get("arguments", params)
     db_path = _resolve_db_path(params)
     query_str = (args.get("query") or params.get("query", "")).strip()
-    limit = int(args.get("top_k") or args.get("limit") or params.get("limit") or 5)
+    limit = int(
+        args.get("top_k")
+        or args.get("limit")
+        or params.get("limit")
+        or params.get("_memory_search_default_limit")
+        or 200
+    )
     date_range = args.get("date_range") or params.get("date_range")
     session_id = args.get("session_id") or params.get("_executor_session_id")
     # Normalize: accept [start, end] array (from time.calculate flow)
@@ -101,6 +107,7 @@ def main() -> None:
         return [
             {"id": r[0], "session_id": r[1], "role": r[2], "content": (r[3] or ""), "created_at": r[4], "date": _ts_to_date(r[4])}
             for r in cur.fetchall()
+            if not (r[2] == "user" and (r[3] or "").startswith("[Background] "))
         ]
 
     conn = sqlite3.connect(str(db_path))
@@ -136,6 +143,8 @@ def main() -> None:
             pargs.append(long_limit)
             cur = conn.execute(sql, pargs)
             for r in cur.fetchall():
+                if r[2] == "user" and (r[3] or "").startswith("[Background] "):
+                    continue
                 row = {"id": r[0], "session_id": r[1], "role": r[2], "content": (r[3] or ""), "created_at": r[4], "date": _ts_to_date(r[4])}
                 if row["id"] not in seen_ids:
                     rows.append(row)

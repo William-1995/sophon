@@ -6,10 +6,13 @@ Endpoints:
 - GET  /api/workspace/files
 - POST /api/chat
 - POST /api/chat/stream  (AG-UI SSE, live tokens)
+- POST /api/chat/async   (fire-and-forget; events via GET /api/events)
+- GET  /api/events       (SSE stream: TASK_STARTED / TASK_FINISHED / TASK_ERROR)
 - GET  /api/health
 - POST   /api/sessions
 - GET    /api/sessions
 - GET    /api/sessions/{id}/messages
+- GET    /api/sessions/{id}/children  (child sessions for parent/child tree)
 - DELETE /api/sessions/{id}
 - POST   /api/sessions/{id}/fork
 
@@ -37,10 +40,30 @@ from config import bootstrap, get_config, SESSION_ID_LENGTH
 from core.skill_loader import get_skills_brief
 from core.providers import get_provider
 from core.react import run_react
-from db.schema import ensure_db_ready
+from db.schema import ensure_db_ready, configure_default_database, get_connection
 from db import memory_long_term
+from db import session_meta as db_session_meta
+
 app = FastAPI(title="Sophon", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# Global event bus for async task lifecycle (TASK_STARTED / TASK_FINISHED / TASK_ERROR). Each subscriber has a queue.
+_event_subscribers: list[asyncio.Queue] = []
+
+
+def _broadcast_event(event: dict) -> None:
+    """Push event to all connected SSE clients (non-blocking)."""
+    dead: list[asyncio.Queue] = []
+    for q in _event_subscribers:
+        try:
+            q.put_nowait(event)
+        except Exception:
+            dead.append(q)
+    for q in dead:
+        try:
+            _event_subscribers.remove(q)
+        except ValueError:
+            pass
 
 
 def _db_path() -> Path:
@@ -101,12 +124,45 @@ def _parse_messages(messages: list[dict]) -> tuple[str, list[dict], str]:
 @app.on_event("startup")
 def startup():
     bootstrap()
-    ensure_db_ready(get_config().paths.db_path())
+    db_path = get_config().paths.db_path()
+    configure_default_database(db_path)
+    ensure_db_ready(db_path)
 
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+async def _events_stream_gen():
+    """SSE stream of async task events (TASK_STARTED, TASK_FINISHED, TASK_ERROR). Keeps connection alive with heartbeat."""
+    queue: asyncio.Queue = asyncio.Queue()
+    _event_subscribers.append(queue)
+    try:
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=25.0)
+            except asyncio.TimeoutError:
+                yield "data: {\"type\":\"heartbeat\"}\n\n"
+                continue
+            if event is None:
+                break
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    finally:
+        try:
+            _event_subscribers.remove(queue)
+        except ValueError:
+            pass
+
+
+@app.get("/api/events")
+async def events():
+    """Server-Sent Events stream for async task lifecycle. Connect once; events include threadId, parentThreadId, agent, kind, status."""
+    return StreamingResponse(
+        _events_stream_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
 
 
 # -------- OpenAI-compatible endpoints --------
@@ -212,10 +268,11 @@ def create_session():
 
 
 @app.get("/api/sessions")
-def list_sessions(include: str | None = None):
+def list_sessions(include: str | None = None, tree: bool = False):
     """
     List sessions (id, message_count, updated_at).
     include: optional comma-separated session ids to include even if empty.
+    tree: if true, return roots with children (parent/child structure and status for async tasks).
     """
     db_path = _db_path()
     sessions = memory_long_term.list_sessions(db_path)
@@ -223,7 +280,43 @@ def list_sessions(include: str | None = None):
         for sid in [s.strip() for s in include.split(",") if s.strip()]:
             if not any(se["id"] == sid for se in sessions):
                 sessions.append({"id": sid, "message_count": 0, "updated_at": None})
-    return {"sessions": sessions}
+    if not tree:
+        return {"sessions": sessions}
+    child_ids = db_session_meta.get_child_ids(db_path)
+    roots = [s for s in sessions if s["id"] not in child_ids]
+    out = []
+    seen_ids: set[str] = set()
+    for r in roots:
+        children = db_session_meta.get_children(db_path, r["id"])
+        seen_ids.add(r["id"])
+        for c in children:
+            seen_ids.add(c["session_id"])
+        out.append({"id": r["id"], "message_count": r["message_count"], "updated_at": r["updated_at"], "children": children})
+    # Include parents that have children but may have no messages (so list_sessions missed them)
+    for parent_id in db_session_meta.get_parent_ids(db_path):
+        if parent_id not in seen_ids:
+            seen_ids.add(parent_id)
+            children = db_session_meta.get_children(db_path, parent_id)
+            for c in children:
+                seen_ids.add(c["session_id"])
+            out.append({"id": parent_id, "message_count": 0, "updated_at": None, "children": children})
+    if include:
+        for raw in [s.strip() for s in include.split(",") if s.strip()]:
+            sid = _resolve_session(db_path, raw) or raw
+            if sid not in seen_ids:
+                out.append({"id": sid, "message_count": 0, "updated_at": None, "children": db_session_meta.get_children(db_path, sid)})
+    return {"roots": out}
+
+
+@app.get("/api/sessions/{session_id}/children")
+def get_session_children(session_id: str):
+    """List child sessions (async task tree). Returns meta with title, agent, kind, status, created_at, updated_at."""
+    db_path = _db_path()
+    sid = _resolve_session(db_path, session_id)
+    if sid is None:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+    children = db_session_meta.get_children(db_path, sid)
+    return {"session_id": sid, "children": children}
 
 
 def _resolve_session(db_path: Path, session_id: str) -> str | None:
@@ -232,37 +325,49 @@ def _resolve_session(db_path: Path, session_id: str) -> str | None:
     if resolved:
         return resolved
     if db_path.exists():
-        from db.schema import get_connection
-        conn = get_connection(db_path)
+        conn = get_connection()
         try:
             cur = conn.execute("SELECT 1 FROM memory_long_term WHERE session_id = ? LIMIT 1", (session_id,))
             if cur.fetchone():
                 return session_id
         finally:
             conn.close()
+        # Parent with no messages: resolve via session_meta (children's parent_id)
+        for pid in db_session_meta.get_parent_ids(db_path):
+            if pid == session_id or (len(session_id) >= 6 and pid.endswith(session_id)):
+                return pid
     return None
 
 
 @app.get("/api/sessions/{session_id}/messages")
 def get_session_messages(session_id: str):
-    """Get messages for a session. Supports partial session_id (e.g. dba17e07 -> web-dba17e07)."""
+    """Get messages for a session. Supports partial session_id. Includes status when session has session_meta (async task)."""
     db_path = _db_path()
     sid = _resolve_session(db_path, session_id)
     if sid is None:
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
     msgs = memory_long_term.get_messages(db_path, sid)
-    return {"session_id": sid, "messages": msgs}
+    out: dict = {"session_id": sid, "messages": msgs}
+    if db_path.exists():
+        meta = db_session_meta.get(db_path, sid)
+        if meta:
+            out["status"] = meta["status"]
+    return out
 
 
 @app.delete("/api/sessions/{session_id}")
 def delete_session(session_id: str):
-    """Delete session and its memory. Supports partial session_id."""
+    """Delete session and its memory. Cascade deletes all children. Supports partial session_id."""
     db_path = _db_path()
     sid = _resolve_session(db_path, session_id)
     if sid is None:
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
     if db_path.exists():
+        for child in db_session_meta.get_children(db_path, sid):
+            memory_long_term.delete_by_session(db_path, child["session_id"])
+            db_session_meta.delete_session(db_path, child["session_id"])
         memory_long_term.delete_by_session(db_path, sid)
+        db_session_meta.delete_session(db_path, sid)
     return {"deleted": sid}
 
 
@@ -312,6 +417,127 @@ def _build_context(req: ChatRequest, session_id: str, db_path: Path) -> list[dic
     if req.history:
         return [{"role": h.get("role", "user"), "content": h.get("content", "")} for h in req.history[-10:]]
     return []
+
+
+async def _run_async_task(
+    child_session_id: str,
+    parent_session_id: str | None,
+    message: str,
+    skill: str | None,
+    model: str,
+    run_id: str,
+    title: str,
+    agent: str,
+    kind: str,
+) -> None:
+    """Background: run ReAct for child session, persist messages, update meta, broadcast TASK_FINISHED/TASK_ERROR."""
+    cfg = get_config()
+    db_path = _db_path()
+    ws = cfg.paths.user_workspace()
+    provider = get_provider(model=model)
+    context = None
+    if child_session_id and db_path.exists():
+        context = memory_long_term.get_recent(db_path, child_session_id, limit=cfg.memory.history_recent_count)
+    try:
+        db_session_meta.update_status(db_path, child_session_id, "running")
+        answer, meta = await run_react(
+            question=message,
+            provider=provider,
+            workspace_root=ws,
+            session_id=child_session_id,
+            user_id="default_user",
+            skill_filter=skill,
+            context=context if context else None,
+            db_path=db_path,
+        )
+        refs = meta.get("references") or []
+        if db_path.exists():
+            memory_long_term.insert(db_path, child_session_id, "assistant", answer, references=refs if refs else None)
+        db_session_meta.update_status(db_path, child_session_id, "done")
+        summary = (answer[:120] + "...") if len(answer) > 120 else answer
+        _broadcast_event({
+            "type": "TASK_FINISHED",
+            "threadId": child_session_id,
+            "parentThreadId": parent_session_id,
+            "runId": run_id,
+            "agent": agent,
+            "kind": kind,
+            "label": title,
+            "result": {"session_id": child_session_id, "tokens": meta.get("tokens", 0), "summary": summary},
+        })
+    except Exception as e:
+        if db_path.exists():
+            db_session_meta.update_status(db_path, child_session_id, "failed")
+            from db.logs import insert as log_insert
+            log_insert(db_path, "ERROR", f"async_task_error: {e}", child_session_id, {"error": str(e)})
+        _broadcast_event({
+            "type": "TASK_ERROR",
+            "threadId": child_session_id,
+            "parentThreadId": parent_session_id,
+            "runId": run_id,
+            "agent": agent,
+            "kind": kind,
+            "label": title,
+            "message": str(e),
+        })
+
+
+@app.post("/api/chat/async")
+async def chat_async(req: ChatRequest):
+    """Submit a message as a background task. Returns immediately with child_session_id. Events streamed via GET /api/events."""
+    from db.recent_files import add as add_recent_file
+    import re
+    cfg = get_config()
+    db_path = _db_path()
+    child_session_id = _new_session_id()
+    parent_session_id = req.session_id
+    title = (req.message.strip()[:80] + "…") if len(req.message.strip()) > 80 else req.message.strip()
+    agent = req.skill or "main"
+    kind = "research" if (req.skill and "research" in req.skill.lower()) else ("crawl" if (req.skill and "crawler" in (req.skill or "").lower()) else "chat")
+    run_id = str(uuid.uuid4())
+    if db_path.exists():
+        db_session_meta.upsert(
+            db_path,
+            child_session_id,
+            parent_id=parent_session_id,
+            title=title,
+            agent=agent,
+            kind=kind,
+            status="queued",
+        )
+        memory_long_term.insert(db_path, child_session_id, "user", req.message.strip())
+    for m in re.finditer(r"@([^\s]+)", req.message):
+        add_recent_file(db_path, m.group(1))
+    if db_path.exists() and parent_session_id:
+        memory_long_term.insert(db_path, parent_session_id, "user", f"[Background] {req.message.strip()}")
+    _broadcast_event({
+        "type": "TASK_STARTED",
+        "threadId": child_session_id,
+        "parentThreadId": parent_session_id,
+        "runId": run_id,
+        "agent": agent,
+        "kind": kind,
+        "label": title,
+    })
+    asyncio.create_task(_run_async_task(
+        child_session_id=child_session_id,
+        parent_session_id=parent_session_id,
+        message=req.message,
+        skill=req.skill,
+        model=req.model or cfg.llm.default_model,
+        run_id=run_id,
+        title=title,
+        agent=agent,
+        kind=kind,
+    ))
+    return {
+        "child_session_id": child_session_id,
+        "parent_session_id": parent_session_id,
+        "status": "accepted",
+        "agent": agent,
+        "kind": kind,
+        "run_id": run_id,
+    }
 
 
 @app.post("/api/chat", response_model=ChatResponse)

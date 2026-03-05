@@ -1,9 +1,10 @@
 """
-Configuration - Sophon Agent Platform.
+Sophon Configuration - Skill-native Agent Platform.
 
 Centralized configuration. All paths derived from ROOT.
 """
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -56,6 +57,10 @@ class MemoryConfig:
     recent_files_days: int = 7
     referent_context_rounds: int = 3
     """For referent resolution (e.g. 'my question', 'write to file'), limit context to the most recent N rounds (1 round = 1 user + 1 assistant message). Older messages are excluded from the prompt to avoid confusion."""
+    memory_search_default_limit: int = field(
+        default_factory=lambda: int(os.environ.get("SOPHON_MEMORY_SEARCH_DEFAULT_LIMIT", "200"))
+    )
+    """Default top_k/limit for memory.search when LLM does not specify. Override via SOPHON_MEMORY_SEARCH_DEFAULT_LIMIT env."""
 
 
 @dataclass(frozen=True)

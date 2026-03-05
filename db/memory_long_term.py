@@ -14,7 +14,7 @@ def resolve_session_id(db_path: Path, q: str) -> str | None:
     """
     if not q or not db_path.exists():
         return None
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         cur = conn.execute(
             "SELECT session_id FROM memory_long_term WHERE session_id = ? OR session_id LIKE ? GROUP BY session_id",
@@ -37,7 +37,7 @@ def insert(
 ) -> None:
     """Insert conversation message. references: optional [{title, url}] for assistant role."""
     refs_json = json.dumps(references, ensure_ascii=False) if references else None
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         conn.execute(
             "INSERT INTO memory_long_term (session_id, role, content, refs_json, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -52,7 +52,7 @@ def get_recent(db_path: Path, session_id: str, limit: int = 20) -> list[dict]:
     """Get recent messages for context injection. Returns [{role, content}, ...] in chronological order (oldest of the recent set first)."""
     if not db_path.exists():
         return []
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         cur = conn.execute(
             "SELECT role, content FROM memory_long_term WHERE session_id = ? ORDER BY created_at DESC LIMIT ?",
@@ -68,7 +68,7 @@ def get_messages(db_path: Path, session_id: str, limit: int = 200) -> list[dict]
     """Get full message list for a session (for display/fork). Returns [{role, content, references?}, ...]."""
     if not db_path.exists():
         return []
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         cur = conn.execute(
             "SELECT role, content, refs_json FROM memory_long_term WHERE session_id = ? ORDER BY created_at ASC LIMIT ?",
@@ -93,7 +93,7 @@ def delete_by_session(db_path: Path, session_id: str) -> int:
     """Delete all messages for a session. Returns deleted count."""
     if not db_path.exists():
         return 0
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         cur = conn.execute("DELETE FROM memory_long_term WHERE session_id = ?", (session_id,))
         conn.commit()
@@ -106,7 +106,7 @@ def copy_to_new_session(db_path: Path, old_session_id: str, new_session_id: str)
     """Copy all messages from old session to new. Returns copied count."""
     if not db_path.exists():
         return 0
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         cur = conn.execute(
             "INSERT INTO memory_long_term (session_id, role, content, refs_json, created_at) "
@@ -123,7 +123,7 @@ def list_sessions(db_path: Path, limit: int = 50) -> list[dict]:
     """List sessions with message count and last updated. Returns [{id, message_count, updated_at}, ...]."""
     if not db_path.exists():
         return []
-    conn = get_connection(db_path)
+    conn = get_connection()
     try:
         cur = conn.execute(
             """
