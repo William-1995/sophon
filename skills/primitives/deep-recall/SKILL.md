@@ -8,7 +8,7 @@ metadata:
 
 ## Orchestration Guidance
 
-**RULE: time expressions ("last week", "yesterday", "最近一周", "recent") → call `time.calculate` first, then `deep-recall.analyze`. NEVER call `search` for time-based queries.**
+**RULE: time expressions ("last week", "yesterday", "past week", "recent") → call `time.calculate` first, then `deep-recall.analyze`. NEVER call `search` for time-based queries.**
 
 **NEVER** tell the user you cannot access history without first calling a `deep-recall` action.
 
@@ -16,7 +16,7 @@ Use `deep-recall` whenever the user asks about past conversations, previous topi
 
 ### Decision tree:
 
-- **Time-based** ("last week", "yesterday", "recent", "past N days", "最近一周"):
+- **Time-based** ("last week", "yesterday", "recent", "past N days", "past week"):
   1. `time.calculate` → get `since`/`until` timestamps
   2. `deep-recall.analyze(since, until)` → retrieve messages
   3. Summarize

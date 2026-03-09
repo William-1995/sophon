@@ -6,7 +6,15 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from constants import DB_FILENAME
+# Load skill constants explicitly (troubleshoot doesn't import core, but keeps pattern consistent)
+import importlib.util
+_spec = importlib.util.spec_from_file_location(
+    "troubleshoot_constants",
+    Path(__file__).resolve().parent.parent / "constants.py",
+)
+_c = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_c)
+DB_FILENAME = _c.DB_FILENAME
 
 
 def _resolve_db_path(params: dict) -> Path:

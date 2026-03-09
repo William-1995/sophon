@@ -7,6 +7,11 @@ import { InputArea } from '../InputArea/InputArea'
 import { formatSessionId } from '../../utils/session'
 import type { Message as MessageType, Skill } from '../../types'
 
+export interface LiveEvent {
+  type: string
+  [key: string]: unknown
+}
+
 interface ChatAreaProps {
   currentSessionId: string | null
   allowBackground?: boolean
@@ -14,6 +19,7 @@ interface ChatAreaProps {
   loading: boolean
   sessionStatus: string | null
   liveTokens: number | null
+  liveEvents?: LiveEvent[]
   chatContainerRef: React.RefObject<HTMLDivElement | null>
   chatEndRef: React.RefObject<HTMLDivElement | null>
   showScrollToBottom: boolean
@@ -34,6 +40,10 @@ interface ChatAreaProps {
   sendMode: 'async' | 'sync'
   setSendMode: React.Dispatch<React.SetStateAction<'async' | 'sync'>>
   onSend: () => void
+  onCancel?: () => void
+  onResume?: () => void
+  lastCancelledRunId?: string | null
+  runId?: string | null
   onKeyDown: (e: React.KeyboardEvent) => void
   inputRef: React.RefObject<HTMLInputElement | null>
 }
@@ -45,6 +55,7 @@ export function ChatArea({
   loading,
   sessionStatus,
   liveTokens,
+  liveEvents = [],
   chatContainerRef,
   chatEndRef,
   showScrollToBottom,
@@ -65,6 +76,10 @@ export function ChatArea({
   sendMode,
   setSendMode,
   onSend,
+  onCancel,
+  onResume,
+  lastCancelledRunId,
+  runId,
   onKeyDown,
   inputRef,
 }: ChatAreaProps) {
@@ -86,6 +101,7 @@ export function ChatArea({
           loading={loading}
           sessionStatus={sessionStatus}
           liveTokens={liveTokens}
+          liveEvents={liveEvents}
           chatEndRef={chatEndRef}
         />
       </div>
@@ -117,6 +133,10 @@ export function ChatArea({
         allowBackground={allowBackground}
         loading={loading}
         onSend={onSend}
+        onCancel={onCancel}
+        onResume={onResume}
+        lastCancelledRunId={lastCancelledRunId}
+        runId={runId}
         onKeyDown={onKeyDown}
         inputRef={inputRef}
       />

@@ -24,9 +24,17 @@ for _p in (_project_root, _lib_dir):
         sys.path.insert(0, str(_p))
 
 from config import get_config
-from constants import DB_FILENAME
+import importlib.util
+_spec = importlib.util.spec_from_file_location(
+    "deep_research_constants",
+    Path(__file__).resolve().parent.parent / "constants.py",
+)
+_c = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_c)
+DB_FILENAME = _c.DB_FILENAME
 from core.executor import execute_skill
-from core.providers import get_provider
+from core.ipc import emit_event, get_reporter
+from providers import get_provider
 from planner import plan_research
 from researcher import research_parallel
 from synthesizer import synthesize
@@ -78,6 +86,11 @@ async def _run_deep_research_async(params: dict) -> dict:
     provider = get_provider()
 
     call_stack = resolved.get("call_stack", [])
+    run_id = os.environ.get("SOPHON_RUN_ID")
+    agent_id = os.environ.get("SOPHON_AGENT_ID") or "deep-research"
+
+    reporter = get_reporter()
+    event_sink = (lambda e: emit_event(e)) if reporter else None
 
     async def execute_tool(skill_name: str, action: str, arguments: dict) -> dict:
         return await execute_skill(
@@ -89,6 +102,9 @@ async def _run_deep_research_async(params: dict) -> dict:
             user_id=user_id,
             db_path=db_path if db_path.exists() else None,
             call_stack=call_stack,
+            run_id=run_id,
+            agent_id=agent_id,
+            event_sink=event_sink,
         )
 
     # Phase 1: Plan

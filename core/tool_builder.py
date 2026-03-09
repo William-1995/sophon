@@ -20,10 +20,12 @@ _DEFAULT_TOOL_DESC = "Action name as defined in the skill's Tools section."
 def build_tools_from_skills(
     skills: list[dict[str, Any]],
     loader: Any,
+    actions_filter: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     """Build OpenAI-format tool definitions for a list of skills.
 
     Skills without scripts (e.g. chat-only) are skipped.
+    actions_filter: optional {skill_name: [action1, action2]} to restrict actions per skill.
     Compatible with an empty input list.
     """
     tools: list[dict] = []
@@ -35,6 +37,7 @@ def build_tools_from_skills(
         if not (full and full.get("scripts")):
             continue
         desc = _enrich_description(s.get("skill_description", ""), full.get("body", ""))
+        allowed = actions_filter.get(name) if actions_filter else None
         tools.append({
             "type": "function",
             "function": {
@@ -45,13 +48,21 @@ def build_tools_from_skills(
                     "properties": {
                         "tool": {
                             "type": "string",
-                            "description": _action_hint(full),
+                            "description": _action_hint(full, allowed_actions=allowed),
                         },
                         "arguments": {
                             "type": "object",
                             "description": "Tool-specific args as defined in the Tools section.",
                         },
+                        "display_summary": {
+                            "type": "string",
+                            "description": (
+                                "REQUIRED. One short sentence for the user describing what you are doing now "
+                                "(e.g. 'Researching your topic and drafting a report'). Used for progress display."
+                            ),
+                        },
                     },
+                    "required": ["tool", "arguments", "display_summary"],
                 },
             },
         })
@@ -97,8 +108,11 @@ def _enrich_description(base_desc: str, body: str) -> str:
     return f"{base_desc}\n\n" + "\n\n".join(sections) if sections else base_desc
 
 
-def _action_hint(skill_data: dict) -> str:
-    """Extract available action names from ## Tools section."""
+def _action_hint(skill_data: dict, allowed_actions: list[str] | None = None) -> str:
+    """Extract available action names from ## Tools section.
+
+    allowed_actions: if set, only these actions are included in the hint.
+    """
     body = skill_data.get("body") or ""
     tools_section = _extract_section(body, "Tools", max_chars=len(body))
     if not tools_section:
@@ -109,6 +123,8 @@ def _action_hint(skill_data: dict) -> str:
         for line in tools_section.split("\n")
         if line.strip().startswith("### ") and line.strip().split()
     ]
+    if allowed_actions is not None:
+        actions = [a for a in actions if a in allowed_actions]
     if not actions:
         return _DEFAULT_TOOL_DESC
 

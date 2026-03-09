@@ -8,6 +8,7 @@ import * as sessionsApi from '../api/sessions'
 import * as resourcesApi from '../api/resources'
 import { saveGenUi } from '../utils/genUi'
 import type { Message, Skill } from '../types'
+import type { DecisionRequired } from '../api/chat'
 
 type SendMode = 'async' | 'sync'
 
@@ -22,6 +23,11 @@ interface UseChatOptions {
   inputDraftsRef?: React.MutableRefObject<Record<string, string>>
 }
 
+export interface LiveEvent {
+  type: string
+  [key: string]: unknown
+}
+
 interface UseChatResult {
   input: string
   setInput: React.Dispatch<React.SetStateAction<string>>
@@ -29,9 +35,16 @@ interface UseChatResult {
   setSelectedSkill: React.Dispatch<React.SetStateAction<Skill | null>>
   loading: boolean
   liveTokens: number | null
+  runId: string | null
+  liveEvents: LiveEvent[]
+  decisionRequired: DecisionRequired | null
+  submitDecision: (choice: string) => Promise<void>
   sendMode: SendMode
   setSendMode: React.Dispatch<React.SetStateAction<SendMode>>
   sendMessage: (text: string) => Promise<void>
+  cancelRun: () => Promise<void>
+  resumeRun: () => Promise<void>
+  lastCancelledRunId: string | null
   inputDraftsRef: React.MutableRefObject<Record<string, string>>
 }
 
@@ -51,7 +64,111 @@ export function useChat(options: UseChatOptions): UseChatResult {
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
   const [loading, setLoading] = useState(false)
   const [liveTokens, setLiveTokens] = useState<number | null>(null)
+  const [runId, setRunId] = useState<string | null>(null)
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([])
+  const [decisionRequired, setDecisionRequired] = useState<DecisionRequired | null>(null)
   const [sendMode, setSendMode] = useState<SendMode>('async')
+  const [lastCancelledRunId, setLastCancelledRunId] = useState<string | null>(null)
+  const runIdRef = useRef<string | null>(null)
+
+  const submitDecision = useCallback(async (choice: string) => {
+    if (decisionRequired?.runId) {
+      try {
+        await chatApi.submitDecision(decisionRequired.runId, choice)
+        setDecisionRequired(null)
+      } catch {
+        // Ignore
+      }
+    }
+  }, [decisionRequired?.runId])
+
+  const cancelRun = useCallback(async () => {
+    if (runId) {
+      try {
+        await chatApi.cancelRun(runId)
+      } catch {
+        // Ignore cancel errors
+      }
+    }
+  }, [runId])
+
+  const resumeRun = useCallback(async () => {
+    const rid = lastCancelledRunId
+    if (!rid || !currentSessionId || loading) return
+    setLastCancelledRunId(null)
+    setLoading(true)
+    setLiveTokens(0)
+    setRunId(null)
+    setLiveEvents([])
+    setDecisionRequired(null)
+    try {
+      const result = await chatApi.sendStream(
+        '[Resume]',
+        selectedSkill?.name ?? null,
+        currentSessionId,
+        (tokens) => setLiveTokens(tokens),
+        (data) => {
+          if (data.type === 'CUSTOM' && data.name === 'sophon_event' && data.value) {
+            const evt = data.value as LiveEvent
+            setLiveEvents((prev) => [...prev.slice(-49), evt])
+          }
+        },
+        (id) => {
+          setRunId(id)
+          runIdRef.current = id
+        },
+        (d) => setDecisionRequired(d),
+        rid
+      )
+      if (result.sessionId && result.sessionId !== currentSessionId) {
+        setCurrentSessionId(result.sessionId)
+        await fetchSessions()
+      }
+      const assistantCount = messages.filter((x) => x.role === 'assistant').length
+      saveGenUi(result.sessionId, assistantCount, result.genUi)
+      setMessages((m) => {
+        const prev = [...m]
+        const lastIdx = prev.length - 1
+        if (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && prev[lastIdx].content === '[Run cancelled by user.]') {
+          prev[lastIdx] = {
+            ...prev[lastIdx],
+            content: result.content,
+            cacheHit: result.cacheHit,
+            tokens: result.tokens,
+            genUi: result.genUi,
+            references: result.references?.length ? result.references : undefined,
+            timestamp: Date.now(),
+          }
+          return prev
+        }
+        return [
+          ...prev,
+          {
+            role: 'assistant' as const,
+            content: result.content,
+            cacheHit: result.cacheHit,
+            tokens: result.tokens,
+            genUi: result.genUi,
+            references: result.references?.length ? result.references : undefined,
+            timestamp: Date.now(),
+          },
+        ]
+      })
+      const files = await resourcesApi.fetchWorkspaceFiles()
+      setWorkspaceFiles(files)
+      await fetchSessions(result.sessionId)
+    } catch (err) {
+      setMessages((m) => [
+        ...m,
+        { role: 'assistant', content: `Error: ${(err as Error).message}`, timestamp: Date.now() },
+      ])
+    } finally {
+      setLoading(false)
+      setLiveTokens(null)
+      setRunId(null)
+      setDecisionRequired(null)
+    }
+  }, [lastCancelledRunId, currentSessionId, loading, selectedSkill, messages, setMessages, setCurrentSessionId, fetchSessions, setWorkspaceFiles])
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -76,7 +193,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
           setInput('')
           setMessages((m) => [
             ...m,
-            { role: 'user', content: `[Background] ${trimmed}`, skill: selectedSkill?.name },
+            { role: 'user', content: `[Background] ${trimmed}`, skill: selectedSkill?.name, timestamp: Date.now() },
           ])
           if (data.child_session_id) {
             await fetchSessions(sessionId)
@@ -84,16 +201,19 @@ export function useChat(options: UseChatOptions): UseChatResult {
         } catch (err) {
           setMessages((m) => [
             ...m,
-            { role: 'assistant', content: `Error: ${(err as Error).message}` },
+            { role: 'assistant', content: `Error: ${(err as Error).message}`, timestamp: Date.now() },
           ])
         }
         return
       }
 
-      setMessages((m) => [...m, { role: 'user', content: trimmed, skill: selectedSkill?.name }])
+      setMessages((m) => [...m, { role: 'user', content: trimmed, skill: selectedSkill?.name, timestamp: Date.now() }])
       setInput('')
       setLoading(true)
-      setLiveTokens(0)
+      setRunId(null)
+      setLiveEvents([])
+      setDecisionRequired(null)
+      setLastCancelledRunId(null)
 
       try {
         const result = await chatApi.sendStream(
@@ -101,9 +221,22 @@ export function useChat(options: UseChatOptions): UseChatResult {
           selectedSkill?.name ?? null,
           sessionId,
           (tokens) => setLiveTokens(tokens),
-          () => {}
+          (data) => {
+            if (data.type === 'CUSTOM' && data.name === 'sophon_event' && data.value) {
+              const evt = data.value as LiveEvent
+              setLiveEvents((prev) => [...prev.slice(-49), evt])
+            }
+          },
+          (id) => {
+            setRunId(id)
+            runIdRef.current = id
+          },
+          (d) => setDecisionRequired(d)
         )
 
+        if (result.cancelled && runIdRef.current) {
+          setLastCancelledRunId(runIdRef.current)
+        }
         if (result.sessionId && result.sessionId !== currentSessionId) {
           setCurrentSessionId(result.sessionId)
           await fetchSessions()
@@ -134,11 +267,13 @@ export function useChat(options: UseChatOptions): UseChatResult {
       } catch (err) {
         setMessages((m) => [
           ...m,
-          { role: 'assistant', content: `Error: ${(err as Error).message}` },
+          { role: 'assistant', content: `Error: ${(err as Error).message}`, timestamp: Date.now() },
         ])
       } finally {
         setLoading(false)
         setLiveTokens(null)
+        setRunId(null)
+        setDecisionRequired(null)
       }
     },
     [
@@ -161,9 +296,16 @@ export function useChat(options: UseChatOptions): UseChatResult {
     setSelectedSkill,
     loading,
     liveTokens,
+    runId,
+    liveEvents,
+    decisionRequired,
+    submitDecision,
     sendMode,
     setSendMode,
     sendMessage,
+    cancelRun,
+    resumeRun,
+    lastCancelledRunId,
     inputDraftsRef,
   }
 }

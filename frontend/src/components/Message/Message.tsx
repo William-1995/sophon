@@ -1,5 +1,5 @@
 /**
- * Message - single chat message with markdown, refs, gen_ui.
+ * Message - single chat message with markdown, refs, gen_ui, date.
  */
 
 import ReactMarkdown from 'react-markdown'
@@ -7,15 +7,28 @@ import remarkGfm from 'remark-gfm'
 import { GenUiChart } from '../GenUiChart/GenUiChart'
 import type { Message as MessageType } from '../../types'
 
+function formatMessageDate(ts: number): string {
+  return new Date(ts).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+}
+
 interface MessageProps {
   message: MessageType
 }
 
 export function Message({ message }: MessageProps) {
-  const { role, content, skill, cacheHit, tokens, genUi, references } = message
+  const { role, content, skill, cacheHit, tokens, genUi, references, timestamp } = message
 
   return (
     <div className={`message ${role}`}>
+      {timestamp != null && (
+        <time className="message-date" dateTime={new Date(timestamp).toISOString().slice(0, 10)}>
+          {formatMessageDate(timestamp)}
+        </time>
+      )}
       {skill && <span className="skill-tag">[{skill}]</span>}
       {role === 'assistant' && (
         <span className="message-meta">

@@ -8,6 +8,13 @@ def main() -> None:
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     query = (args.get("query") or "").strip()
+    try:
+        from core.ipc import get_reporter
+        r = get_reporter()
+        if r:
+            r.emit("progress", {"phase": "search", "query": query[:50], "display_text": f"Searching: {query[:60]}"})
+    except Exception:
+        pass
     num = int(args.get("num", params.get("num", 5)))
     num = max(1, min(10, num))
     if not query:

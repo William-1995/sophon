@@ -64,6 +64,7 @@ export function useSessions(): UseSessionsResult {
       role: m.role as 'user' | 'assistant',
       content: m.content,
       references: Array.isArray(m.references) ? m.references : undefined,
+      timestamp: m.created_at != null ? m.created_at * 1000 : undefined,
     }))
     const msgs = loadGenUiForMessages(sessionId, baseMsgs)
     setMessages(msgs)
@@ -153,6 +154,8 @@ export function useSessions(): UseSessionsResult {
       (data.messages ?? []).map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
+        references: Array.isArray(m.references) ? m.references : undefined,
+        timestamp: m.created_at != null ? m.created_at * 1000 : undefined,
       }))
     )
     await fetchSessions(newId)

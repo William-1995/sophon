@@ -130,6 +130,43 @@ Or manually: `pip install -r requirements.txt && playwright install chromium && 
 - **Parent-child multi-session structure**: each async task (e.g. a background long-running call) creates a child session; parent-child links are stored in `session_meta`. The frontend shows sessions as a tree. You can continue from any child session or return to the parent.
 - **Parallel multi-session**: the main UI supports switching between sessions; async tasks run independently in child sessions. The parent session receives only a summary (e.g. "background troubleshoot done, click to open detailed child session").
 
+### Event IPC (Subprocess Progress Reporting)
+
+Skills run in isolated subprocesses. For real-time visibility (what the LLM is doing, progress, etc.), skills can optionally emit structured events to the parent via a **pipe-based channel**.
+
+- **Transport**: Pipe (parent reads, child writes via fd passed in env). **Windows**: `pass_fds` is Unix-only; on Windows the event pipe is not created, skills run normally but subprocess events are not collected. Use Unix/macOS for real-time event streaming.
+- **Format**: **JSON first** (default) — NDJSON over pipe, human-readable, cross-tool. **MessagePack** optional — length-prefixed binary for efficiency (`SOPHON_IPC_FORMAT=msgpack`).
+- **Protocol**: Each frame is `{"sophon_event": <event>}`. Skills implement optionally; no implementation = no events collected.
+
+**Child (skill) side** — set env before spawn:
+- `SOPHON_REPORT_EVENTS=1`
+- `SOPHON_EVENT_FD=<write_fd>`
+- `SOPHON_IPC_FORMAT=json` (default) or `msgpack`
+
+```python
+from core.ipc import get_reporter, emit_event
+
+reporter = get_reporter()
+if reporter:
+    reporter.emit("progress", {"phase": "fetch", "current": 5, "total": 20})
+# or: emit_event({"type": "progress", "phase": "fetch", ...})
+```
+
+**Parent side** — create pipe, pass write fd to child, read with `PipeEventChannel`:
+
+```python
+from core.ipc import PipeEventChannel
+
+channel = PipeEventChannel(read_fd, format_name="json")  # or "msgpack"
+channel.start()
+async for event in channel.read_events():
+    event_sink(event)  # forward to UI, logs, etc.
+```
+
+See [docs/ARCHITECTURE_DISCUSSION.md](docs/ARCHITECTURE_DISCUSSION.md) for design rationale and extension points.
+
+---
+
 ### deep-research Pipeline
 
 ```
@@ -144,6 +181,8 @@ Plan -> Research (parallel) -> Synthesize
 ```
 
 LLM denoising filters irrelevant URLs by understanding the research question — no hardcoded patterns. Works for any language and any search result shape.
+
+The frontend supports **interrupt/cancel** (per run via Cancel button), **real-time LLM actions** (tool calls, sub-agent progress via pipe IPC), and **human-in-the-loop** (when backend emits `DECISION_REQUIRED`). See [docs/ARCHITECTURE_DISCUSSION.md](docs/ARCHITECTURE_DISCUSSION.md) for design rationale.
 
 ---
 

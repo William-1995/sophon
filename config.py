@@ -1,5 +1,5 @@
 """
-Sophon Configuration - Skill-native Agent Platform.
+Sophon Configuration - Simplified Agent Platform.
 
 Centralized configuration. All paths derived from ROOT.
 """
@@ -8,10 +8,9 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from constants import DB_FILENAME
+from constants import DB_FILENAME, DEFAULT_USER_ID
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_USER_ID = "default_user"
 SESSION_ID_LENGTH = 8
 
 
@@ -46,6 +45,38 @@ class ReactConfig:
     max_tokens_per_response: int = 4096
     max_parallel_tool_calls: int = 10
     """Cap concurrent tool executions per round. Prevents resource exhaustion from LLM hallucination."""
+    hitl_enabled: bool = field(
+        default_factory=lambda: os.environ.get("SOPHON_HITL_ENABLED", "true").lower() in ("1", "true", "yes")
+    )
+    """When True, adds request_human_decision tool for human-in-the-loop. Disable via SOPHON_HITL_ENABLED=0."""
+    thinking_enabled: bool = field(
+        default_factory=lambda: os.environ.get("SOPHON_THINKING_ENABLED", "true").lower() in ("1", "true", "yes")
+    )
+    """When True, prompts LLM to wrap reasoning in <thinking>...</thinking>; parsed and emitted as THINKING events. Disable via SOPHON_THINKING_ENABLED=0."""
+
+
+@dataclass(frozen=True)
+class ExecutorConfig:
+    """Executor configuration - timeouts and parameter injection."""
+
+    default_timeout: int = 30
+    """Default skill script timeout (seconds). Override via constants.SKILL_TIMEOUT_OVERRIDES."""
+    timeout_overrides: tuple[tuple[str, int], ...] = ()  # (skill_name, seconds)
+    """Per-skill timeout overrides. Populated from constants.SKILL_TIMEOUT_OVERRIDES."""
+
+
+def _executor_timeout_overrides() -> tuple[tuple[str, int], ...]:
+    """Load timeout overrides from constants (configurable via constants module)."""
+    from constants import SKILL_TIMEOUT_OVERRIDES
+    return tuple(SKILL_TIMEOUT_OVERRIDES.items())
+
+
+def get_executor_param_injections(skill_name: str, action: str) -> dict:
+    """Return extra params to merge into skill args. Config-driven; no hardcoding in executor."""
+    cfg = get_config()
+    if skill_name == "memory" and action == "search":
+        return {"_memory_search_default_limit": cfg.memory.memory_search_default_limit}
+    return {}
 
 
 @dataclass(frozen=True)
@@ -70,6 +101,7 @@ class SkillConfig:
     exposed_skills: tuple[str, ...] = (
         "troubleshoot",
         "deep-research",
+        "excel-ops",
         "search",
         "crawler",
         "filesystem",
@@ -161,7 +193,7 @@ class MCPConfig:
 def _resolve_mcp_config() -> MCPConfig:
     """Build MCPConfig with env-driven servers.
 
-    Bridge URL is resolved lazily via mcp_client.bridge_server.get_bridge_base_url()
+    Bridge URL is resolved lazily via mcp_integration.bridge_server.get_bridge_base_url()
     (runs on a dedicated port to avoid deadlock when skills call MCP).
     """
     return MCPConfig(servers=_mcp_default_servers(), bridge_base_url="")
@@ -173,6 +205,7 @@ class AppConfig:
 
     paths: PathConfig = field(default_factory=PathConfig)
     react: ReactConfig = field(default_factory=ReactConfig)
+    executor: ExecutorConfig = field(default_factory=lambda: ExecutorConfig(timeout_overrides=_executor_timeout_overrides()))
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     skills: SkillConfig = field(default_factory=SkillConfig)
     deep_research: "DeepResearchConfig" = field(default_factory=_resolve_deep_research_config)

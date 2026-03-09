@@ -15,7 +15,12 @@ interface TreeResponse {
 }
 
 interface MessagesResponse {
-  messages?: Array<{ role: string; content: string; references?: Array<{ title?: string; url: string }> }>
+  messages?: Array<{
+    role: string
+    content: string
+    references?: Array<{ title?: string; url: string }>
+    created_at?: number
+  }>
   status?: string
 }
 

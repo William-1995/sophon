@@ -19,7 +19,7 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 from config import bootstrap, get_config, DEFAULT_USER_ID, SESSION_ID_LENGTH
-from core.providers import get_provider
+from providers import get_provider
 from core.react import run_react
 from db.schema import ensure_db_ready, configure_default_database
 

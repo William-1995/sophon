@@ -7,6 +7,11 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+# Add skill root for constants
+_skill_root = Path(__file__).resolve().parent.parent
+if str(_skill_root) not in sys.path:
+    sys.path.insert(0, str(_skill_root))
+
 from constants import DB_FILENAME
 
 

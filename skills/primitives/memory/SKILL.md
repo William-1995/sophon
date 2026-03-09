@@ -14,7 +14,7 @@ Use search for keyword lookup; use read for a specific date or session. Omit ses
 
 **Resolving referents**: When the user refers to "my question", "what I asked", "the previous message", "that content", etc. without stating it explicitly, prioritize the most recent rounds of dialogue (default 3 rounds; configurable via referent_context_rounds). Only the most recent N rounds are passed to you, so use them first. Call memory.read (omit session_id for current session) if you need more. If you cannot determine the referent confidently, ask the user to clarify before acting.
 
-For relative dates (yesterday, 2 days ago, 前天): call time.calculate first. Use its since/until (extract YYYY-MM-DD) as memory.search(date_range={"start": since_date, "end": until_date}) or memory.read(date=since_date).
+For relative dates (yesterday, 2 days ago, day before yesterday): call time.calculate first. Use its since/until (extract YYYY-MM-DD) as memory.search(date_range={"start": since_date, "end": until_date}) or memory.read(date=since_date).
 
 ## Tools
 

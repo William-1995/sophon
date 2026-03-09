@@ -21,7 +21,11 @@ interface InputAreaProps {
   setSendMode: React.Dispatch<React.SetStateAction<'async' | 'sync'>>
   allowBackground?: boolean
   loading: boolean
+  runId?: string | null
   onSend: () => void
+  onCancel?: () => void
+  onResume?: () => void
+  lastCancelledRunId?: string | null
   onKeyDown: (e: React.KeyboardEvent) => void
   inputRef: React.RefObject<HTMLInputElement | null>
 }
@@ -46,6 +50,10 @@ export function InputArea({
   allowBackground = true,
   loading,
   onSend,
+  onCancel,
+  onResume,
+  lastCancelledRunId,
+  runId,
   onKeyDown,
   inputRef,
 }: InputAreaProps) {
@@ -143,14 +151,34 @@ export function InputArea({
             </button>
           </span>
         )}
-        <button
-          type="button"
-          className="btn-send"
-          onClick={onSend}
-          disabled={(!allowBackground || sendMode === 'sync') && loading}
-        >
-          Send
-        </button>
+        {loading && runId && sendMode === 'sync' && onCancel ? (
+          <button
+            type="button"
+            className="btn-cancel"
+            onClick={onCancel}
+            title="Cancel run"
+          >
+            Cancel
+          </button>
+        ) : lastCancelledRunId && !loading && onResume ? (
+          <button
+            type="button"
+            className="btn-resume"
+            onClick={onResume}
+            title="Resume from checkpoint"
+          >
+            Resume
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn-send"
+            onClick={onSend}
+            disabled={(!allowBackground || sendMode === 'sync') && loading}
+          >
+            Send
+          </button>
+        )}
       </div>
     </div>
   )

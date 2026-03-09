@@ -16,6 +16,48 @@
   position: relative;
 }
 
+/* HITL Decision modal */
+.decision-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+.decision-modal {
+  background: var(--msg-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  min-width: 280px;
+  max-width: 90vw;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.2);
+}
+.decision-modal h3 { margin: 0 0 12px; font-size: 1rem; }
+.decision-message { margin: 0 0 16px; color: var(--muted); font-size: 0.9rem; }
+.decision-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.btn-decision-choice {
+  padding: 8px 16px;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.btn-decision-choice:hover { background: var(--accent); color: var(--bg); }
+.decision-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+.btn-dismiss { margin-top: 8px; font-size: 0.85rem; color: var(--muted); }
+
 .orb-wrap {
   position: fixed;
   bottom: 24px;
@@ -308,6 +350,13 @@
   background: var(--msg-bg);
   border: 1px solid var(--border);
 }
+.message-date {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+  opacity: 0.85;
+}
 .skill-tag { font-size: 0.72rem; opacity: 0.7; margin-right: 8px; }
 .message-meta { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge {
@@ -498,6 +547,28 @@
 }
 .btn-send:hover:not(:disabled) { opacity: 0.9; }
 .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-cancel {
+  padding: 8px 16px;
+  background: var(--msg-bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.btn-cancel:hover { background: var(--hover); color: var(--fg); }
+
+.btn-resume {
+  padding: 8px 16px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.btn-resume:hover { opacity: 0.9; }
 
 .send-mode-toggle {
   display: flex;

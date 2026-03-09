@@ -52,6 +52,8 @@ export interface Message {
   tokens?: number
   genUi?: { type: string; payload?: unknown }
   references?: Reference[]
+  /** Timestamp in milliseconds (epoch). Used for date display (year, month, day). */
+  timestamp?: number
 }
 
 export type SendMode = 'async' | 'sync'

@@ -65,13 +65,13 @@ def get_recent(db_path: Path, session_id: str, limit: int = 20) -> list[dict]:
 
 
 def get_messages(db_path: Path, session_id: str, limit: int = 200) -> list[dict]:
-    """Get full message list for a session (for display/fork). Returns [{role, content, references?}, ...]."""
+    """Get full message list for a session (for display/fork). Returns [{role, content, references?, created_at?}, ...]."""
     if not db_path.exists():
         return []
     conn = get_connection()
     try:
         cur = conn.execute(
-            "SELECT role, content, refs_json FROM memory_long_term WHERE session_id = ? ORDER BY created_at ASC LIMIT ?",
+            "SELECT role, content, refs_json, created_at FROM memory_long_term WHERE session_id = ? ORDER BY created_at ASC LIMIT ?",
             (session_id, limit),
         )
         rows = cur.fetchall()
@@ -83,6 +83,8 @@ def get_messages(db_path: Path, session_id: str, limit: int = 200) -> list[dict]
                     msg["references"] = json.loads(row[2])
                 except (json.JSONDecodeError, TypeError):
                     pass
+            if len(row) > 3 and row[3] is not None:
+                msg["created_at"] = row[3]
             out.append(msg)
         return out
     finally:

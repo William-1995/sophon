@@ -16,7 +16,7 @@ function isValidGenUi(v: unknown): v is { type: string; payload?: unknown } {
 
 export function loadGenUiForMessages(
   sessionId: string,
-  baseMsgs: Array<{ role: string; content: string; references?: Message['references'] }>
+  baseMsgs: Array<{ role: string; content: string; references?: Message['references']; timestamp?: number }>
 ): Message[] {
   try {
     const stored = localStorage.getItem(GEN_UI_PREFIX + sessionId)

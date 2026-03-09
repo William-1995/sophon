@@ -209,6 +209,21 @@ class SkillLoader:
             "skill_file_path": str(skill_md.absolute()),
             "scripts": _scan_scripts(skill_dir),
         }
+        # Skill declares main-agent entry action (e.g. run); main agent only sees that action
+        entry_action = meta.get("entry_action", "")
+        if entry_action:
+            entry["entry_action"] = str(entry_action).strip()
+        # Skill-defined action aliases (e.g. inspect -> structure when script shadows stdlib)
+        raw_aliases = meta.get("action_aliases", "")
+        if raw_aliases:
+            aliases = {}
+            for part in str(raw_aliases).split(","):
+                part = part.strip()
+                if ":" in part:
+                    from_a, to_a = part.split(":", 1)
+                    aliases[from_a.strip()] = to_a.strip()
+            if aliases:
+                entry["action_aliases"] = aliases
         for optional in ("license", "compatibility"):
             if fm.get(optional):
                 entry[optional] = fm[optional]

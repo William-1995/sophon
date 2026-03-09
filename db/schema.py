@@ -100,6 +100,21 @@ CREATE TABLE IF NOT EXISTS session_meta (
 );
 CREATE INDEX IF NOT EXISTS idx_session_meta_parent ON session_meta(parent_id);
 CREATE INDEX IF NOT EXISTS idx_session_meta_status ON session_meta(status);
+
+-- Run checkpoints: saved state when user cancels; enables resume
+CREATE TABLE IF NOT EXISTS run_checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    round_num INTEGER NOT NULL,
+    question TEXT,
+    observations_json TEXT,
+    messages_json TEXT,
+    total_tokens INTEGER DEFAULT 0,
+    created_at REAL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_run ON run_checkpoints(run_id);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_session ON run_checkpoints(session_id);
 """
 
 _FTS_SQL = """
@@ -189,17 +204,18 @@ def configure_default_database(db_path: Path, engine: str = "sqlite") -> None:
 def get_connection() -> sqlite3.Connection:
     """
     Get a connection to the configured default database. Caller must close.
-
-    Args:
-        None.
-
-    Returns:
-        sqlite3.Connection
+    Falls back to SOPHON_DB_PATH env var when run in skill subprocess.
     """
+    import os
     if _DB_ENGINE == "sqlite":
-        if _DB_PATH is None:
+        path = _DB_PATH
+        if path is None:
+            env_path = os.environ.get("SOPHON_DB_PATH")
+            if env_path and str(env_path).strip():
+                path = Path(env_path)
+        if path is None:
             raise RuntimeError("Default database is not configured. Call configure_default_database() first.")
-        conn = sqlite3.connect(str(_DB_PATH))
+        conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
         return conn
     if _DB_ENGINE == "postgres":

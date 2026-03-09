@@ -10,6 +10,7 @@ import { useOrbPanel } from './hooks/useOrbPanel'
 import { useEventSource } from './hooks/useEventSource'
 import { useNotifications } from './hooks/useNotifications'
 import { ChatArea } from './components/ChatArea/ChatArea'
+import { DecisionModal } from './components/DecisionModal/DecisionModal'
 import { OrbPanel } from './components/OrbPanel/OrbPanel'
 import { fetchSkills, fetchWorkspaceFiles } from './api/resources'
 import { ORB_RESIZE_MIN } from './constants'
@@ -73,6 +74,13 @@ function App() {
     fetchSkills().then(setSkills)
     fetchWorkspaceFiles().then(setWorkspaceFiles)
   }, [])
+
+  // Keep session tree up to date so we can reliably detect child sessions
+  useEffect(() => {
+    if (currentSessionId) {
+      fetchSessionTree(currentSessionId)
+    }
+  }, [currentSessionId, fetchSessionTree])
 
   useEffect(() => {
     if (orbPanel.orbOpen) fetchSessionTree()
@@ -163,6 +171,12 @@ function App() {
 
   return (
     <div className="app">
+      {chat.decisionRequired && (
+        <DecisionModal
+          data={chat.decisionRequired}
+          onSubmit={(c) => chat.submitDecision(c)}
+        />
+      )}
       <div className="main">
         <ChatArea
           currentSessionId={currentSessionId}
@@ -191,6 +205,11 @@ function App() {
           sendMode={chat.sendMode}
           setSendMode={chat.setSendMode}
           onSend={() => chat.sendMessage(chat.input)}
+          onCancel={chat.cancelRun}
+          onResume={chat.resumeRun}
+          lastCancelledRunId={chat.lastCancelledRunId}
+          runId={chat.runId}
+          liveEvents={chat.liveEvents}
           onKeyDown={handleKeyDown}
           inputRef={inputRef}
         />

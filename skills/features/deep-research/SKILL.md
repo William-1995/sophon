@@ -3,6 +3,7 @@ name: deep-research
 description: Deep research on a topic. Decomposes question into sub-questions, searches and fetches web sources in parallel, synthesizes a structured report with inline citations and a source list. Use when user asks for in-depth research, comprehensive analysis, or a structured report.
 metadata:
   type: feature
+  entry_action: run
   dependencies: "search,crawler,filesystem,deep-recall"
 ---
 

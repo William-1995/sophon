@@ -1,0 +1,57 @@
+"""
+Workspace API - Workspace file management.
+
+List and query workspace files with recent files prioritization.
+"""
+
+from pathlib import Path
+
+from db.recent_files import get_recent
+from api.utils import get_db_path
+from config import get_config
+
+
+def list_workspace_files(q: str = "", recent_days: int = 7) -> dict:
+    """List workspace files with recent files first.
+
+    Args:
+        q: Optional search query to filter files.
+        recent_days: Number of days to consider as "recent".
+
+    Returns:
+        Dict with files list and recent files list.
+    """
+    cfg = get_config()
+    ws = cfg.paths.user_workspace()
+    db_path = cfg.paths.db_path()
+
+    # Get recent files from DB
+    recent = get_recent(db_path) if db_path.exists() else []
+
+    if not ws.exists():
+        return {"files": recent, "recent": recent}
+
+    # Collect all files in workspace
+    all_files = []
+    for path in ws.rglob("*"):
+        if path.is_file() and not path.name.startswith("."):
+            rel = str(path.relative_to(ws))
+            all_files.append(rel)
+
+    # Apply search filter if provided
+    if q:
+        query_lower = q.lower()
+        all_files = [f for f in all_files if query_lower in f.lower()]
+
+    # Separate recent and other files
+    recent_valid = [f for f in recent if f in all_files]
+    rest = [f for f in sorted(all_files) if f not in recent_valid]
+
+    # Limit total results
+    max_results = 200
+    remaining_slots = max_results - len(recent_valid)
+
+    return {
+        "files": recent_valid + rest[:remaining_slots],
+        "recent": recent_valid,
+    }

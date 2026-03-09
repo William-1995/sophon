@@ -1,4 +1,4 @@
-# Sophon V7 - Minimal dependencies
+# Sophon - Minimal dependencies
 httpx>=0.27.0
 fastapi>=0.115.0
 uvicorn>=0.32.0
@@ -8,3 +8,5 @@ ddgs>=9.0.0
 mcp>=1.0.0
 playwright>=1.40.0
 trafilatura>=2.0.0
+openpyxl>=3.1.0
+msgpack>=1.0.0  # optional: SOPHON_IPC_FORMAT=msgpack for efficient event IPC

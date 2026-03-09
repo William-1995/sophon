@@ -16,7 +16,7 @@ _root = Path(__file__).resolve().parent
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
-from mcp_client.bridge_server import main
+from mcp_integration.bridge_server import main
 
 if __name__ == "__main__":
     main()

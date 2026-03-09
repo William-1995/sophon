@@ -13,6 +13,13 @@ def main() -> None:
         return
     wait_ms = int(args.get("wait_for", 2000))
     try:
+        from core.ipc import get_reporter
+        r = get_reporter()
+        if r:
+            r.emit("progress", {"phase": "crawl", "url": url[:80], "display_text": f"Crawling: {url[:80]}"})
+    except Exception:
+        pass
+    try:
         from playwright.sync_api import sync_playwright
         import trafilatura
     except ImportError as e:
