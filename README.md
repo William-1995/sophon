@@ -63,16 +63,20 @@ Sophon has a **two-tier skill architecture** that scales from simple tools to co
 
 ## Why Sophon?
 
-| Feature | Sophon | Others |
-|---------|--------|--------|
-| **Engineer-curated** | Skills designed & tested by humans | AI generates code on-the-fly |
-| **Safety boundaries** | Defined capabilities, no arbitrary execution | AI can execute anything |
-| **Zero registration** | Drop files, auto-discover | Write glue code, register manually |
-| **Process isolation** | Each skill in subprocess (crashes contained) | Shared process (one crash kills all) |
-| **Built-in sub-agents** | Feature skills ARE sub-agents | Requires complex implementation |
-| **Portable skills** | SKILL.md standard, runtime-agnostic | Framework-specific code |
-| **Local-first** | SQLite-only, data stays on your machine | Cloud databases, external vectors |
-| **Full observability** | Real-time thinking, tool usage, diagnostics | Black box execution |
+**Engineering-First Philosophy**
+We believe that complex AI capabilities should be designed, tested, and validated by engineers—not generated on-the-fly by AI. Sophon provides the structure for human-curated intelligence while letting AI focus on orchestration.
+
+**Zero-Friction Skill Development**
+Drop a `SKILL.md` and script into a folder. Sophon discovers it automatically. No decorators, no registration boilerplate, no framework lock-in. Skills are self-contained, portable, and runtime-agnostic.
+
+**Built for Real-World Complexity**
+Sophon handles multi-task workflows through parent-child sessions, supports concurrent task execution, and provides full visibility into what the AI is thinking and doing. Cancel long-running tasks, resume from checkpoints, and maintain full audit trails.
+
+**Safety by Design**
+Process isolation ensures skill crashes don't bring down the system. Capability boundaries prevent AI from escaping defined limits. Every skill executes validated scripts—never arbitrary AI-generated code.
+
+**Local-First, Privacy-First**
+All data stays on your machine in SQLite. No cloud dependencies, no external vector databases. Your conversations, context, and workflows remain entirely under your control.
 
 ---
 
@@ -84,9 +88,16 @@ git clone https://github.com/William-1995/sophon.git
 cd sophon
 python -m venv .venv && source .venv/bin/activate
 
-# 2. Configure (add your API key)
+# 2. Configure (choose your provider)
+# Configuration files:
+#   - .env (main config, created from .env.example)
+#   - config.py (system parameters and defaults)
 cp .env.example .env
-# Edit .env: DEEPSEEK_API_KEY=sk-... or DASHSCOPE_API_KEY=...
+# In .env configure exactly one LLM provider:
+#   - DeepSeek (cloud):    DEEPSEEK_API_KEY=...
+#   - Qwen/DashScope:      DASHSCOPE_API_KEY=...  (optional QWEN_MODEL, e.g. qwen-plus)
+#   - Ollama (local):      ensure Ollama is running, e.g. `ollama run qwen3.5:9b --think=false`
+# If multiple are set, Sophon prefers: DeepSeek > Qwen > Ollama.
 
 # 3. Start (installs deps, Playwright, and runs)
 python start.py              # API at http://localhost:8080
@@ -117,6 +128,13 @@ Built-in feature skills that act as sub-agents:
 - **`troubleshoot`**: Correlates logs, traces, and metrics; generates diagnostic charts
 - **`excel-ops`**: Complex Excel manipulations with AI assistance
 
+**Skill Composition**
+Engineers can build sophisticated capabilities by composing existing skills:
+- **Dependencies**: Declare primitives or features as dependencies in SKILL.md
+- **Nested orchestration**: Feature skills call other feature skills as sub-agents
+- **DAG validation**: Circular dependencies detected and rejected at load time
+- **Unlimited nesting**: Compose skills to any depth, from simple tools to complex workflows
+
 **Engineering-First Design**
 - **Human-curated capabilities**: Complex skills designed, tested, and validated by engineers
 - **Structured abstraction**: Clear boundaries between what AI decides vs what skills execute
@@ -143,8 +161,15 @@ Sophon treats visibility as a first-class citizen:
 - **Built-in diagnostics**: Self-monitoring capabilities for troubleshooting the agent itself
 - **Emotion-aware**: Detects and responds to user emotional cues in conversations
 
+**Local Speech-to-Text**
+Built-in voice input using faster-whisper (local, no cloud):
+- **Models**: tiny, base (default), small, medium, large
+- **First-time setup**: Model downloads automatically on first use (~150MB for base model)
+- **Languages**: Supports zh, en, auto-detect
+- **Configurable**: Set `SOPHON_SPEECH_MODEL` environment variable
+
 **Privacy-First**
-- **Your data stays local**: All logs, traces, memory, metrics in SQLite
+- **Your data stays local**: All logs, traces, session context, metrics in SQLite
 - **No cloud dependencies**: DuckDuckGo search (no API key needed)
 - **LLM-only calls**: Only your configured provider sees prompts
 
@@ -159,7 +184,7 @@ Sophon treats visibility as a first-class citizen:
 | `crawler` | Scrape & extract content with Playwright |
 | `filesystem` | Read, write, list workspace files |
 | `time` | Timezone conversion, date formatting |
-| `deep-recall` | Memory search and exploration |
+| `deep-recall` | Context exploration powered by RLM-inspired recursive search — intelligently navigates short-term (cached) and long-term (persistent) context across sessions |
 | `log-analyze` | Query and analyze application logs |
 | `trace` | Distributed trace analysis |
 | `metrics` | Time-series metrics query |
@@ -232,26 +257,44 @@ See [docs/create-skill.md](docs/create-skill.md) for the complete guide.
 - **[API Reference](docs/API.md)** - HTTP API endpoints
 - **[Creating Skills](docs/create-skill.md)** - Skill authoring guide
 
+## Provider Configuration (LLM backends)
+Sophon can use different LLM providers; configure **exactly one** in `.env`:
+
+- **DeepSeek (cloud)**: set `DEEPSEEK_API_KEY` (and optional `DEEPSEEK_MODEL`).
+- **Qwen/DashScope (cloud)**: set `DASHSCOPE_API_KEY` (and optional `QWEN_MODEL`, e.g. `qwen-plus`).
+- **Ollama (local)**: ensure Ollama is running and choose a non-thinking model, e.g.:
+  - `ollama run qwen3.5:9b --think=false`
+
+If you accidentally configure multiple providers, Sophon will prioritize: DeepSeek > Qwen > Ollama.
+
 ---
 
 ## Coming Soon
 
 - **Agent marketplace** - Share and discover community skills
 - **Enhanced file processing** - Advanced Excel, PDF, and document handling capabilities
+- **Desktop application** - Native desktop app for seamless OS-level integration
 
 ---
 
+## Current Status
+
+Sophon is in early development. Many features are working, but there's still much to improve—performance optimizations, edge case handling, documentation gaps, and broader skill coverage. We believe in building in the open and learning from the community.
+
+If you encounter issues or have ideas, please open an issue or join the discussion. Your feedback helps shape what Sophon becomes.
+
 ## Contributing
 
-We welcome contributions! Skills in particular require no knowledge of core internals.
+We welcome contributions of all kinds! Skills are a great starting point—they require no knowledge of core internals.
 
-**Good first contributions:**
-- New primitive skills: `weather`, `calculator`, `github`, `database`
-- New LLM providers: OpenAI, Claude, Gemini
-- Improve `deep-research` synthesis quality
-- Documentation and examples
+**Areas where help is especially appreciated:**
+- **New skills**: `weather`, `calculator`, `github`, `database`, `calendar`, `email`
+- **LLM providers**: OpenAI, Claude, Gemini, local model support
+- **File formats**: PDF, Word, image processing capabilities
+- **Testing & bug reports**: Real-world usage feedback
+- **Documentation**: Tutorials, examples, translations
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 

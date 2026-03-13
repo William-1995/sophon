@@ -40,6 +40,54 @@ React Frontend ←──→ FastAPI ←──→ ReAct Orchestrator ←──→
 - Examples: deep-research, troubleshoot, excel-ops
 - Act as sub-agents, calling primitives as tools
 
+### Skill Composition
+
+Sophon enables **unlimited skill composition**—engineers can build sophisticated capabilities by combining existing skills:
+
+**Declaring Dependencies**
+
+In SKILL.md, declare dependencies on other skills:
+```yaml
+metadata:
+  type: feature
+  dependencies: "search,crawler,deep-research"
+```
+
+This allows your skill to invoke `search`, `crawler`, and even `deep-research` as sub-agents.
+
+**Nested Orchestration**
+
+Feature skills can call other feature skills:
+```
+Main Agent
+└── Feature Skill A (depends on Feature Skill B)
+    └── Feature Skill B (depends on Primitives)
+        ├── Primitive: search
+        └── Primitive: crawler
+```
+
+**DAG Validation**
+
+Sophon validates the skill dependency graph at load time:
+- Detects circular dependencies (A → B → A)
+- Rejects cycles before runtime
+- Reports dependency errors with clear messages
+
+**Composition Examples**
+
+| Use Case | Composition |
+|----------|-------------|
+| **Research + Analysis** | `deep-research` → `troubleshoot` for analyzing research findings |
+| **Multi-source aggregation** | `search` + `crawler` + `filesystem` for comprehensive data collection |
+| **Workflow automation** | Chain `excel-ops` → `filesystem` → `email` for report generation |
+
+**Benefits**
+
+- **Reusability**: Build once, compose anywhere
+- **Modularity**: Complex workflows from simple, tested components
+- **Maintainability**: Update primitive, all dependent features benefit
+- **Discoverability**: Skills advertise their capabilities via SKILL.md
+
 ### Execution Model
 
 1. **Input**: JSON via stdin
@@ -147,6 +195,57 @@ channel.start()
 async for event in channel.read_events():
     event_sink(event)
 ```
+
+## Context Management & RLM-Inspired Architecture
+
+Sophon has a fundamental design principle: **There is no "memory"—only context at different stages of persistence.**
+
+Unlike traditional agent systems that treat "memory" as a separate concept, Sophon views all information as **context** that exists on a spectrum from short-term (cached) to long-term (persistent).
+
+### No Memory, Only Context
+
+- **Short-term context**: Current conversation, recent messages, cached intermediate results
+- **Long-term context**: Persisted session histories, skill outputs, references
+- **Cross-session context**: Relationships between parent and child sessions
+
+The `deep-recall` skill navigates this context spectrum using ideas inspired by [RLM (Recursive Language Model)](https://github.com/ysz/recursive-llm), but adapted for Sophon's context-centric philosophy.
+
+### How Deep-Recall Works
+
+Instead of "remembering" facts, deep-recall **recursively explores the context space**:
+
+1. **Query Analysis**: Understand what context is needed
+2. **Recursive Exploration**: Search across short-term and long-term context layers
+3. **Context Assembly**: Retrieve relevant context segments, not "memories"
+4. **LLM-Augmented**: Use LLM to determine which context segments are relevant
+
+### RLM-Inspired Context Navigation
+
+Borrowing from RLM's recursive approach:
+- **Hierarchical exploration**: Search context at multiple time scales (recent, day, week, month)
+- **Iterative refinement**: Narrow down from broad context to specific segments
+- **Cross-reference**: Link related context across different sessions and times
+- **No embedding required**: Uses structured query + LLM reasoning instead of vector similarity
+
+### Why This Matters
+
+Traditional "memory" systems:
+- Create artificial boundaries between "working memory" and "long-term memory"
+- Often rely on brittle vector similarity
+- Lose the narrative structure of conversations
+
+Sophon's context approach:
+- **Continuous spectrum**: Context flows naturally from recent to historical
+- **Structured retrieval**: Uses session trees, timestamps, and skill outputs
+- **Narrative preservation**: Maintains the flow and relationships between ideas
+- **Engineer-curated**: Context structure is designed, not emergent
+
+### Use Cases
+
+- **Contextual continuity**: "What did we discuss about the API design in our last session?"
+- **Cross-session insights**: Finding related discussions across different projects
+- **Temporal navigation**: "Show me how this requirement evolved over the past month"
+- **Skill output tracking**: Retrieve previous tool results without re-execution
 
 ## Design Principles
 

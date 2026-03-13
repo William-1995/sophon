@@ -63,16 +63,20 @@ Sophon 采用**双层技能架构**，从简单工具到复杂的多步骤工作
 
 ## 为什么选择 Sophon？
 
-| 特性 | Sophon | 其他框架 |
-|------|--------|----------|
-| **工程师精心策划** | 由人类设计并测试的技能 | AI 实时生成代码 |
-| **安全边界** | 定义好的能力，无任意执行 | AI 可以执行任何操作 |
-| **零注册** | 放入文件，自动发现 | 编写胶水代码，手动注册 |
-| **进程隔离** | 每个技能在子进程中运行（崩溃被隔离） | 共享进程（一个崩溃全部崩溃） |
-| **内置子 Agent** | 功能技能就是子 Agent | 需要复杂实现 |
-| **技能可移植** | SKILL.md 标准，运行时无关 | 框架特定代码 |
-| **本地优先** | 纯 SQLite，数据留在你的机器 | 云数据库，外部向量存储 |
-| **完全可观测** | 实时思考、工具使用、诊断 | 黑盒执行 |
+**工程优先的理念**
+我们相信复杂的 AI 能力应该由工程师设计、测试和验证，而不是由 AI 实时生成。Sophon 为人类策划的智能提供结构，同时让 AI 专注于编排。
+
+**零摩擦的技能开发**
+只需将 `SKILL.md` 和脚本放入文件夹，Sophon 就能自动发现。无需装饰器，无需注册样板代码，无框架锁定。技能是自包含的、可移植的、运行时无关的。
+
+**为真实世界的复杂性而设计**
+Sophon 通过父子会话处理多任务工作流，支持并发任务执行，并提供对 AI 思考和操作的完全可见性。随时取消长时间运行的任务，从检查点恢复，并维护完整的审计追踪。
+
+**设计即安全**
+进程隔离确保技能崩溃不会拖垮系统。能力边界防止 AI 突破定义的限制。每个技能执行经过验证的脚本，从不执行任意 AI 生成的代码。
+
+**本地优先，隐私优先**
+所有数据都保留在你机器的 SQLite 中。无云依赖，无外部向量数据库。你的对话、上下文和工作流完全由你控制。
 
 ---
 
@@ -84,9 +88,16 @@ git clone https://github.com/William-1995/sophon.git
 cd sophon
 python -m venv .venv && source .venv/bin/activate
 
-# 2. 配置（添加你的 API 密钥）
+# 2. 配置（选择你的提供商）
+# 配置文件位置：
+#   - .env（主配置文件，从 .env.example 复制）
+#   - config.py（系统参数和默认值）
 cp .env.example .env
-# 编辑 .env: DEEPSEEK_API_KEY=sk-... 或 DASHSCOPE_API_KEY=...
+# 在 .env 中只配置一个 LLM 提供商：
+#   - DeepSeek（云端）：DEEPSEEK_API_KEY=...
+#   - Qwen/DashScope（云端）：DASHSCOPE_API_KEY=...（可选 QWEN_MODEL，例如 qwen-plus）
+#   - Ollama（本地）：确保 Ollama 已安装并运行，例如 `ollama run qwen3.5:9b --think=false`
+# 如同时配置多个，优先级：DeepSeek > Qwen > Ollama。
 
 # 3. 启动（自动安装依赖、Playwright 并运行）
 python start.py              # API 在 http://localhost:8080
@@ -117,6 +128,13 @@ Sophon 通过父子会话模型支持复杂的多任务工作流：
 - **`troubleshoot`**：关联日志、追踪和指标，生成诊断图表
 - **`excel-ops`**：AI 辅助的复杂 Excel 操作
 
+**技能组合**
+工程师可以通过组合现有技能构建复杂能力：
+- **依赖声明**：在 SKILL.md 中声明原语或功能技能为依赖
+- **嵌套编排**：功能技能可以调用其他功能技能作为子 Agent
+- **DAG 验证**：加载时检测并拒绝循环依赖
+- **无限嵌套**：从简单工具到复杂工作流，任意深度组合技能
+
 **工程优先设计**
 - **人类精心策划的能力**：复杂的技能由工程师设计、测试和验证
 - **结构化抽象**：AI 决策与技能执行之间有清晰的边界
@@ -143,6 +161,13 @@ Sophon 将可见性视为一等公民：
 - **内置诊断**：自我监控能力，用于排查 Agent 自身问题
 - **情绪感知**：检测并响应用户对话中的情绪线索
 
+**本地语音识别**
+内置基于 faster-whisper 的语音输入（本地运行，无需云端）：
+- **模型**：tiny、base（默认）、small、medium、large
+- **首次设置**：首次使用时自动下载模型（base 模型约 150MB）
+- **语言支持**：支持中文、英文、自动检测
+- **可配置**：通过 `SOPHON_SPEECH_MODEL` 环境变量设置模型
+
 **隐私优先**
 - **数据本地化**：所有日志、追踪、内存、指标都在 SQLite 中
 - **无云依赖**：DuckDuckGo 搜索（无需 API 密钥）
@@ -159,7 +184,7 @@ Sophon 将可见性视为一等公民：
 | `crawler` | 使用 Playwright 抓取和提取内容 |
 | `filesystem` | 读取、写入、列出工作区文件 |
 | `time` | 时区转换、日期格式化 |
-| `deep-recall` | 内存搜索和探索 |
+| `deep-recall` | 基于 RLM 思想的上下文探索 — 智能地在短期（缓存）和长期（持久化）上下文之间导航，跨会话检索相关信息 |
 | `log-analyze` | 查询和分析应用程序日志 |
 | `trace` | 分布式追踪分析 |
 | `metrics` | 时序指标查询 |
@@ -238,20 +263,39 @@ chmod +x skills/primitives/my-skill/scripts/run.py
 
 - **Agent 市场** - 分享和发现社区技能
 - **增强的文件处理** - 高级 Excel、PDF 和文档处理能力
+- **桌面应用程序** - 原生桌面应用，实现与操作系统的无缝集成
 
 ---
 
+## 当前状态
+
+Sophon 仍处于早期开发阶段。许多功能已经可以工作，但仍有大量改进空间——性能优化、边界情况处理、文档完善以及更广泛的技能覆盖。我们相信开放构建，并从社区学习中成长。
+
+如果你遇到问题或有想法，请提交 issue 或参与讨论。你的反馈将帮助塑造 Sophon 的未来。
+
+## 提供商配置（切换提供商）
+
+Sophon 支持多种 LLM 提供商，你可以通过编辑 `.env` 来切换（**只配置一个即可**）：
+
+- **DeepSeek（云端）**：在 `.env` 中设置 `DEEPSEEK_API_KEY`（以及可选的 `DEEPSEEK_MODEL`）。
+- **Qwen / DashScope（云端）**：设置 `DASHSCOPE_API_KEY`，可选 `QWEN_MODEL`（例如 `qwen-plus`）。
+- **Ollama（本地）**：确保已安装并运行 Ollama，选择非思考模型，例如：
+  - `ollama run qwen3.5:9b --think=false`
+
+如同时配置多个提供商，Sophon 的优先级为：DeepSeek > Qwen > Ollama。
+
 ## 贡献
 
-我们欢迎贡献！特别是技能开发，完全不需要了解核心内部。
+我们欢迎各种类型的贡献！技能开发是一个很好的起点——完全不需要了解核心内部。
 
-**好的首次贡献：**
-- 新原语技能：`weather`、`calculator`、`github`、`database`
-- 新 LLM 提供商：OpenAI、Claude、Gemini
-- 改进 `deep-research` 综合质量
-- 文档和示例
+**特别需要帮助的方向：**
+- **新技能**：`weather`、`calculator`、`github`、`database`、`calendar`、`email`
+- **LLM 提供商**：OpenAI、Claude、Gemini、本地模型支持
+- **文件格式**：PDF、Word、图像处理能力
+- **测试与问题反馈**：真实使用场景的反馈
+- **文档**：教程、示例、翻译
 
-请参见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+详情请参见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ---
 

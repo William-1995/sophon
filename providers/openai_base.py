@@ -114,13 +114,17 @@ class OpenAICompatibleProvider(BaseProvider):
 
         url = f"{self.base_url}/chat/completions"
 
+        # Build headers. Some backends (e.g. local Ollama) do not require an API key.
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(
                 url,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
+                headers=headers,
                 json=body,
             )
             resp.raise_for_status()

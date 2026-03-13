@@ -20,6 +20,7 @@ Example:
     )
 """
 
+from constants import LLM_TIMEOUT
 from providers.base import BaseProvider
 from providers.deepseek import DeepSeekProvider
 from providers.ollama import OllamaProvider
@@ -57,6 +58,10 @@ def get_provider(name: str | None = None, model: str | None = None, **kwargs) ->
     if name is None:
         name = _model_to_provider(model or "deepseek-chat")
 
+    # Default timeout for all providers, unless explicitly overridden.
+    if "timeout" not in kwargs:
+        kwargs["timeout"] = float(LLM_TIMEOUT)
+
     if name == "deepseek":
         return DeepSeekProvider(model=model or None, **kwargs)
     if name == "qwen":
@@ -80,8 +85,19 @@ def _model_to_provider(model: str) -> str:
         Provider name: 'qwen', 'ollama', or 'deepseek' (default).
     """
     m = (model or "").lower()
+
+    # Qwen on Ollama: models like 'qwen3.5:9b' should use OllamaProvider.
+    # We treat any 'qwen*' model that includes a colon as an Ollama model.
+    if m.startswith("qwen") and ":" in m:
+        return "ollama"
+
+    # Cloud Qwen (DashScope), e.g. 'qwen-plus'
     if m.startswith("qwen"):
         return "qwen"
+
+    # Other common Ollama families
     if m.startswith("llama") or m.startswith("mistral") or m.startswith("gemma"):
         return "ollama"
+
+    # Fallback: DeepSeek
     return "deepseek"

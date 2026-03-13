@@ -32,7 +32,7 @@ MAX_LOG_LIMIT = 5000
 
 # ── Timeouts (seconds) ────────────────────────────────────────────────────────
 SKILL_TIMEOUT = 30
-LLM_TIMEOUT = 60
+LLM_TIMEOUT = 1200  # HTTP read timeout for LLM chat (local/Ollama models, including emotion sub-agent)
 # Per-skill overrides (heavy skills: multi-LLM, web fetch). Key = skill_name, value = seconds.
 SKILL_TIMEOUT_OVERRIDES: dict[str, int] = {
     "deep-research": 300,
