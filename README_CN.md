@@ -96,7 +96,7 @@ cp .env.example .env
 # 在 .env 中只配置一个 LLM 提供商：
 #   - DeepSeek（云端）：DEEPSEEK_API_KEY=...
 #   - Qwen/DashScope（云端）：DASHSCOPE_API_KEY=...（可选 QWEN_MODEL，例如 qwen-plus）
-#   - Ollama（本地）：确保 Ollama 已安装并运行，例如 `ollama run qwen3.5:9b --think=false`
+#   - Ollama（本地）：确保 Ollama 已安装并运行，例如 `ollama run qwen3.5:4b --think=false`
 # 如同时配置多个，优先级：DeepSeek > Qwen > Ollama。
 
 # 3. 启动（自动安装依赖、Playwright 并运行）

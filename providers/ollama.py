@@ -11,7 +11,7 @@ from typing import Any
 from providers.openai_base import OpenAICompatibleProvider
 
 _DEFAULT_BASE_URL = "http://localhost:11434/v1"
-_DEFAULT_MODEL = "qwen3.5:9b"
+_DEFAULT_MODEL = "qwen3.5:4b"
 
 
 class OllamaProvider(OpenAICompatibleProvider):

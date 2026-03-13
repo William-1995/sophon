@@ -96,7 +96,7 @@ cp .env.example .env
 # In .env configure exactly one LLM provider:
 #   - DeepSeek (cloud):    DEEPSEEK_API_KEY=...
 #   - Qwen/DashScope:      DASHSCOPE_API_KEY=...  (optional QWEN_MODEL, e.g. qwen-plus)
-#   - Ollama (local):      ensure Ollama is running, e.g. `ollama run qwen3.5:9b --think=false`
+#   - Ollama (local):      ensure Ollama is running, e.g. `ollama run qwen3.5:4b --think=false`
 # If multiple are set, Sophon prefers: DeepSeek > Qwen > Ollama.
 
 # 3. Start (installs deps, Playwright, and runs)
