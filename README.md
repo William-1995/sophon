@@ -1,301 +1,260 @@
 # Sophon
 
-> A skill-native AI agent platform. Define skills in Markdown, run them as isolated scripts, and let the LLM orchestrate everything.
+> **The skill-native AI agent platform.** Drop a SKILL.md + script into a folder—Sophon discovers, composes, and orchestrates. Zero registration, infinite composability.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**Open source · Self-hosted · Zero vendor lock-in**
+**[中文文档](README_CN.md)** | **[Contributing](CONTRIBUTING.md)** | **[Discord](your-discord-link)**
+
+---
+
+## What Makes Sophon Different
+
+Most agent frameworks require you to write glue code to register tools and wire up function calling. Sophon inverts this:
+
+> **The skill definition IS the tool.**
+
+Sophon is not just another agent framework—it's a foundation for an **AI-native OS-level assistant** that handles your work and life. We believe in **engineer-curated capabilities** over AI-generated chaos.
+
+### Engineering-First, Safety-First
+
+Unlike systems that let AI improvise and execute arbitrary code, Sophon operates on a core principle:
+
+**Complex capabilities are designed and validated by engineers, not generated on-the-fly by AI.**
+
+- **Structured abstraction**: Every skill is a carefully designed, tested, and versioned capability
+- **Predictable boundaries**: Skills run in isolated subprocesses with defined inputs/outputs
+- **Human-curated intelligence**: Engineers define *what* AI can do and *how* it does it
+- **No arbitrary execution**: AI orchestrates skills, but cannot create new capabilities or escape defined boundaries
+
+### Skills as Tools. Skills as Sub-agents.
+
+Sophon has a **two-tier skill architecture** that scales from simple tools to complex multi-step workflows:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Main Agent (Orchestrator)                          │
+│  Analyzes question → Selects skills → Synthesizes   │
+└──────────────┬──────────────────────────────────────┘
+               │
+    ┌──────────┴──────────┐
+    │                     │
+┌───▼────┐          ┌────▼─────┐
+│ Primitives      │  │ Features         │
+│                 │  │                  │
+│ • search        │  │ • deep-research  │
+│ • crawler       │  │ • troubleshoot   │
+│ • filesystem    │  │ • excel-ops      │
+│ • time          │  │                  │
+│ • log-analyze   │  │ [Sub-agents with  │
+│ • trace         │  │  their own ReAct  │
+│ • metrics       │  │  loops]           │
+└─────────────────┘  └──────────────────┘
+```
+
+- **Primitives**: Single-purpose tools (search, crawl, file I/O). They do one thing well.
+- **Features**: Complex capabilities that ARE sub-agents. Each feature runs its own lightweight ReAct loop, calling primitives as tools.
+
+**Example**: `deep-research` is not a tool—it's a sub-agent that plans, dispatches parallel searches, filters results, fetches pages, and synthesizes findings. The main agent just decides *when to invoke it*.
 
 ---
 
 ## Why Sophon?
 
-Most agent frameworks require you to write Python glue code to register tools, wire up function calling, and manage state. Sophon inverts this: **the skill definition is the tool**. Drop a `SKILL.md` and a Python script into a folder — the agent discovers and uses it automatically.
-
-- **Zero registration** — add a directory, the agent picks it up on next start
-- **SKILL.md standard** — [Anthropic agentskills.io](https://agentskills.io/)-compatible, portable across agent runtimes
-- **Process isolation** — each skill runs in its own subprocess; crashes do not affect the agent
-- **SQLite-only persistence** — logs, traces, memory, metrics in one file; your data stays local
-- **Streaming UI** — React frontend with Markdown, collapsible references, charts, skill picker
-
----
-
-## Demo
-
-```
-User:  Research the current state of AI coding assistants
-
-Agent: Planning research into 4 sub-questions...
-       LLM denoising URLs, selecting top sources...
-       Fetching 12 URLs in parallel, synthesizing report...
-
-## Summary
-AI coding assistants have matured significantly in 2024-2025...
-
-## Key Findings
-1. Context window size is now the primary competitive dimension...
-2. Local model quality has closed the gap with cloud APIs...
-
-▾ References (5)   ← collapsible; click to expand
-```
-
-Skills return structured `references: [{title, url}]`; the UI merges, dedupes, and renders them in a collapsible section.
+| Feature | Sophon | Others |
+|---------|--------|--------|
+| **Engineer-curated** | Skills designed & tested by humans | AI generates code on-the-fly |
+| **Safety boundaries** | Defined capabilities, no arbitrary execution | AI can execute anything |
+| **Zero registration** | Drop files, auto-discover | Write glue code, register manually |
+| **Process isolation** | Each skill in subprocess (crashes contained) | Shared process (one crash kills all) |
+| **Built-in sub-agents** | Feature skills ARE sub-agents | Requires complex implementation |
+| **Portable skills** | SKILL.md standard, runtime-agnostic | Framework-specific code |
+| **Local-first** | SQLite-only, data stays on your machine | Cloud databases, external vectors |
+| **Full observability** | Real-time thinking, tool usage, diagnostics | Black box execution |
 
 ---
 
 ## Quick Start
 
-Requirements: Python 3.11+, Node 18+ (for frontend)
-
 ```bash
+# 1. Clone & setup
 git clone https://github.com/William-1995/sophon.git
 cd sophon
+python -m venv .venv && source .venv/bin/activate
 
-python -m venv .venv && source .venv/bin/activate   # or `venv\Scripts\activate` on Windows
-
+# 2. Configure (add your API key)
 cp .env.example .env
-# Edit .env: add DEEPSEEK_API_KEY or DASHSCOPE_API_KEY
+# Edit .env: DEEPSEEK_API_KEY=sk-... or DASHSCOPE_API_KEY=...
 
-# One-click: installs deps + Playwright browser, then starts API (no "first run" distinction)
-python start.py                                  # API -> http://localhost:8080
+# 3. Start (installs deps, Playwright, and runs)
+python start.py              # API at http://localhost:8080
 
-cd frontend && npm install && npm run dev       # UI  -> http://localhost:5173
+cd frontend && npm install && npm run dev  # UI at http://localhost:5173
 ```
-
-Or manually: `pip install -r requirements.txt && playwright install chromium && python run_api.py`
 
 ---
 
-## Architecture
+## Feature Highlights
 
-**Main agent (orchestrator)** — analyzes the question, selects skills, dispatches work, collects results, summarizes. Skills own their output via `observation` and optional `references`; the agent merges references, dedupes by URL, and passes them to the API for rendering.
+**Skill-Native Architecture**
+- **SKILL.md standard**: Portable across any compatible runtime ([agentskills.io](https://agentskills.io/))
+- **Auto-discovery**: Add/remove capabilities by creating/deleting folders
+- **Self-contained**: Each skill owns its logic, constants, and dependencies
 
-**Skills (workers)** — each skill reads its spec (SKILL.md), executes, and returns `observation` plus optional `references: [{title, url}]` for the LLM. Skills control their own output format.
+**Multi-Session Architecture**
+Sophon supports complex multi-task workflows through its parent-child session model:
+- **Concurrent tasks**: Run multiple independent tasks simultaneously, each in its own session
+- **Parent-child hierarchy**: Background tasks spawn child sessions; parent receives summaries while child contains full details
+- **Cancel & resume**: Interrupt long-running tasks anytime; resume from any point in session history
+- **Continue anywhere**: Jump into any child session to continue the conversation
+- **Session-level concurrency**: Each session operates independently with isolated context and state
 
-**Execution**: Direct (primitive scripts) or sub-agent (feature skills with their own ReAct loop). **Parallel dispatch** — multiple tool calls in one round run in parallel, capped by `max_parallel_tool_calls` to prevent resource exhaustion from LLM hallucination.
+**Sub-agent Capabilities**
+Built-in feature skills that act as sub-agents:
+- **`deep-research`**: Multi-phase research with parallel fetching, LLM denoising, and synthesized reports with citations
+- **`troubleshoot`**: Correlates logs, traces, and metrics; generates diagnostic charts
+- **`excel-ops`**: Complex Excel manipulations with AI assistance
 
-### Risk Mitigations
+**Engineering-First Design**
+- **Human-curated capabilities**: Complex skills designed, tested, and validated by engineers
+- **Structured abstraction**: Clear boundaries between what AI decides vs what skills execute
+- **Human-in-the-loop**: Delegate tasks to the agent, review progress, intervene when needed
+- **Predictable behavior**: No arbitrary code generation or execution
 
-| Risk | Mitigation |
-|------|------------|
-| **Concurrency explosion** | `max_parallel_tool_calls` (default 10) limits concurrent tool executions per round |
-| **Skill call cycles** | Call-stack detection in `execute_skill` rejects A→B→A; DAG validation at load time rejects circular dependencies |
-| **File write race** | Path-based locks serialize `filesystem.write` / `delete` / `rename` to the same path |
+**Security & Safety**
+- **Process isolation**: Each skill runs in isolated subprocess; crashes are contained
+- **Capability boundaries**: AI orchestrates pre-defined skills, cannot create new capabilities
+- **Input validation**: All skill parameters are validated against schemas
+- **Resource limits**: Concurrency controls prevent resource exhaustion
+- **No arbitrary execution**: Skills execute validated scripts, not AI-generated code
+- **Full audit trail**: Every thought, action, and result is logged and inspectable
+- **Session tree**: Visualize parent-child session relationships
+- **Checkpoint recovery**: Resume interrupted tasks from last checkpoint
 
-```
-+-------------------------------------------------------------+
-|                    React Frontend                            |
-|  Skill selector . Markdown rendering . Charts . Sessions     |
-+------------------------+------------------------------------+
-                         | /api (HTTP + SSE streaming)
-+------------------------v------------------------------------+
-|                  FastAPI  :8080                              |
-+------------------------+------------------------------------+
-                         |
-+------------------------v------------------------------------+
-|              Main Agent (ReAct Orchestrator)                  |
-|                                                              |
-|  Round 1: select skills (lightweight LLM call)               |
-|  Round N: Thought -> Action -> Observation (parallel exec)   |
-|  Final:   summarize, reply to user                           |
-+----------+---------------------------+-----------------------+
-           |                          |
-  +--------v----------+    +----------v---------------------+
-  |   Primitives      |    |   Features (sub-agents)        |
-  |                   |    |                                |
-  |  search           |    |  troubleshoot                  |
-  |  crawler          |    |    -> log-analyze, trace,      |
-  |  filesystem       |    |       metrics, deep-recall     |
-  |  time             |    |  deep-research                 |
-  |  deep-recall      |    |    -> search, crawler,        |
-  |  log-analyze      |    |       filesystem, deep-recall |
-  |  trace            |    |                                |
-  |  metrics          |    |                                |
-  +--------+----------+    +----------+---------------------+
-           |   subprocess (isolated)  |
-           +--------------+-----------+
-                          |
-              +-----------v------------+
-              |   SQLite (sophon.db)   |
-              |  logs . traces .       |
-              |  metrics . memory      |
-              +------------------------+
-```
+**File Processing**
+Built-in support for complex document operations including Excel manipulations, with PDF and more formats coming soon.
 
-### Sessions & Sub-agents
+**Visibility & Observability**
+Sophon treats visibility as a first-class citizen:
+- **Thinking transparency**: See the LLM's reasoning process in real-time
+- **Tool usage tracking**: Watch which skills are called, with what parameters, and their results
+- **Built-in diagnostics**: Self-monitoring capabilities for troubleshooting the agent itself
+- **Emotion-aware**: Detects and responds to user emotional cues in conversations
 
-- **Skill-as-sub-agent**: feature skills (e.g. `deep-research`, `troubleshoot`) are sub-agents themselves: each runs a lightweight ReAct loop internally, calling primitives as their "tools". The main agent only decides *when to call which skill*; it does not control how skills orchestrate internally.
-- **Parent-child multi-session structure**: each async task (e.g. a background long-running call) creates a child session; parent-child links are stored in `session_meta`. The frontend shows sessions as a tree. You can continue from any child session or return to the parent.
-- **Parallel multi-session**: the main UI supports switching between sessions; async tasks run independently in child sessions. The parent session receives only a summary (e.g. "background troubleshoot done, click to open detailed child session").
-
-### Event IPC (Subprocess Progress Reporting)
-
-Skills run in isolated subprocesses. For real-time visibility (what the LLM is doing, progress, etc.), skills can optionally emit structured events to the parent via a **pipe-based channel**.
-
-- **Transport**: Pipe (parent reads, child writes via fd passed in env). **Windows**: `pass_fds` is Unix-only; on Windows the event pipe is not created, skills run normally but subprocess events are not collected. Use Unix/macOS for real-time event streaming.
-- **Format**: **JSON first** (default) — NDJSON over pipe, human-readable, cross-tool. **MessagePack** optional — length-prefixed binary for efficiency (`SOPHON_IPC_FORMAT=msgpack`).
-- **Protocol**: Each frame is `{"sophon_event": <event>}`. Skills implement optionally; no implementation = no events collected.
-
-**Child (skill) side** — set env before spawn:
-- `SOPHON_REPORT_EVENTS=1`
-- `SOPHON_EVENT_FD=<write_fd>`
-- `SOPHON_IPC_FORMAT=json` (default) or `msgpack`
-
-```python
-from core.ipc import get_reporter, emit_event
-
-reporter = get_reporter()
-if reporter:
-    reporter.emit("progress", {"phase": "fetch", "current": 5, "total": 20})
-# or: emit_event({"type": "progress", "phase": "fetch", ...})
-```
-
-**Parent side** — create pipe, pass write fd to child, read with `PipeEventChannel`:
-
-```python
-from core.ipc import PipeEventChannel
-
-channel = PipeEventChannel(read_fd, format_name="json")  # or "msgpack"
-channel.start()
-async for event in channel.read_events():
-    event_sink(event)  # forward to UI, logs, etc.
-```
-
-See [docs/ARCHITECTURE_DISCUSSION.md](docs/ARCHITECTURE_DISCUSSION.md) for design rationale and extension points.
+**Privacy-First**
+- **Your data stays local**: All logs, traces, memory, metrics in SQLite
+- **No cloud dependencies**: DuckDuckGo search (no API key needed)
+- **LLM-only calls**: Only your configured provider sees prompts
 
 ---
 
-### deep-research Pipeline
+## Built-in Skills
 
-```
-Plan -> Research (parallel) -> Synthesize
-        +-- sub-question 1       LLM merges all notes into
-        |   +-- search           structured report with
-        |   +-- LLM denoise      inline citations and
-        |       (filter noise)    structured references
-        |   +-- LLM select URLs
-        |   +-- crawler fetch
-        +-- sub-question 2...    (asyncio fork/join)
-```
-
-LLM denoising filters irrelevant URLs by understanding the research question — no hardcoded patterns. Works for any language and any search result shape.
-
-The frontend supports **interrupt/cancel** (per run via Cancel button), **real-time LLM actions** (tool calls, sub-agent progress via pipe IPC), and **human-in-the-loop** (when backend emits `DECISION_REQUIRED`). See [docs/ARCHITECTURE_DISCUSSION.md](docs/ARCHITECTURE_DISCUSSION.md) for design rationale.
-
----
-
-## Skills
-
-### Built-in Primitives
-
+**Primitives**
 | Skill | Description |
 |-------|-------------|
-| `search` | Web search via DuckDuckGo — no API key needed |
-| `crawler` | Scrape a URL with Playwright + trafilatura extraction |
-| `filesystem` | Read, write, list, and manage workspace files |
-| `time` | Timezone conversion and date formatting |
-| `deep-recall` | Memory exploration — search, analyze by time, explore sessions |
+| `search` | Web search via DuckDuckGo |
+| `crawler` | Scrape & extract content with Playwright |
+| `filesystem` | Read, write, list workspace files |
+| `time` | Timezone conversion, date formatting |
+| `deep-recall` | Memory search and exploration |
 | `log-analyze` | Query and analyze application logs |
 | `trace` | Distributed trace analysis |
-| `metrics` | Time-series metrics query and write |
+| `metrics` | Time-series metrics query |
+| `diagnostics` | Self-diagnosis and troubleshooting |
 
-### Built-in Features
-
+**Features (Sub-agents)**
 | Skill | Description |
 |-------|-------------|
-| `troubleshoot` | Correlates logs, traces, and metrics; renders charts |
-| `deep-research` | Multi-phase web research: LLM denoise → select URLs → parallel fetch → synthesis |
-
-### Add Your Own
-
-```
-skills/primitives/my-skill/
-+-- SKILL.md        <- define name, description, parameters, output contract
-+-- scripts/
-    +-- run.py      <- reads JSON from stdin, writes JSON to stdout
-```
-
-See [docs/create-skill.md](docs/create-skill.md) for the full guide.
+| `deep-research` | Multi-step research with planning, parallel execution, synthesis |
+| `troubleshoot` | Root-cause analysis across observability data |
+| `excel-ops` | Advanced Excel operations |
 
 ---
 
-## SKILL.md Format
+## Create Your Own Skill
 
-Skills follow the [Anthropic Agent Skills](https://agentskills.io/) spec — portable across any compatible runtime.
-
-```markdown
+```bash
+mkdir -p skills/primitives/my-skill
+cat > skills/primitives/my-skill/SKILL.md << 'EOF'
 ---
 name: my-skill
-description: "What this skill does and when to use it. 200 chars max."
+description: "What this skill does and when to use it"
 metadata:
-  type: primitive        # or: feature
-  dependencies: ""       # features: comma-separated primitive names
-license: MIT
-compatibility: "sophon>=1"
+  type: primitive
+  dependencies: ""
 ---
-
-## Orchestration Guidance
-When and how the main agent should use this skill.
 
 ## Tools
-
-### action-name
-Description of this action.
-
-| Parameter | Type   | Required | Description |
-|-----------|--------|----------|-------------|
-| query     | string | Yes      | Input text  |
+### run
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| query | string | Yes | Input to process |
 
 ## Output Contract
+| Field | Type | Description |
+|-------|------|-------------|
+| result | string | The main output |
+| observation | string | LLM-ready text |
+| references | array | Optional citations |
+EOF
 
-| Field  | Type   | Description             |
-|--------|--------|-------------------------|
-| result      | string | The main output                     |
-| observation | string | LLM-ready text; when present, used verbatim |
-| references  | array  | Optional `[{title, url}]` for citations   |
-| error       | string | Present only on failure             |
+# Create the script
+cat > skills/primitives/my-skill/scripts/run.py << 'EOF'
+#!/usr/bin/env python3
+import json, sys
+
+params = json.load(sys.stdin)
+query = params["query"]
+
+# Your logic here
+result = f"Processed: {query}"
+
+json.dump({
+    "result": result,
+    "observation": result
+}, sys.stdout)
+EOF
+chmod +x skills/primitives/my-skill/scripts/run.py
 ```
+
+Restart Sophon. Your skill is automatically discovered and ready to use.
+
+See [docs/create-skill.md](docs/create-skill.md) for the complete guide.
 
 ---
 
-## API
+## Documentation
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | Health check |
-| `/api/skills` | GET | List available skills |
-| `/api/models` | GET | List LLM providers |
-| `/api/sessions` | GET | List chat sessions |
-| `/api/sessions/{id}/messages` | GET | Session history |
-| `/api/workspace/files` | GET | Workspace file list |
-| `/api/chat` | POST | `{message, skill?, model?}` -> SSE stream |
+- **[Architecture](docs/ARCHITECTURE.md)** - Technical architecture and design
+- **[API Reference](docs/API.md)** - HTTP API endpoints
+- **[Creating Skills](docs/create-skill.md)** - Skill authoring guide
+
+---
+
+## Coming Soon
+
+- **Agent marketplace** - Share and discover community skills
+- **Enhanced file processing** - Advanced Excel, PDF, and document handling capabilities
 
 ---
 
 ## Contributing
 
-We welcome contributions of all kinds — new skills in particular require no knowledge of core internals.
+We welcome contributions! Skills in particular require no knowledge of core internals.
+
+**Good first contributions:**
+- New primitive skills: `weather`, `calculator`, `github`, `database`
+- New LLM providers: OpenAI, Claude, Gemini
+- Improve `deep-research` synthesis quality
+- Documentation and examples
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-Good first contributions:
-- Build a new primitive skill: `weather`, `calculator`, `github`, `database`
-- Add a new LLM provider: OpenAI, Claude, Gemini
-- Improve the `deep-research` synthesis quality
-- Write documentation or examples
-
----
-
-## Security & Privacy
-
-- **Your data stays local** — SQLite stores logs, traces, memory, and metrics in your workspace. No cloud sync unless you add it.
-- **LLM calls** — Only your configured provider (DeepSeek, Qwen, etc.) receives prompts. No third-party analytics.
-- **Skills** — Run in isolated subprocesses; no arbitrary code execution from the agent itself.
 
 ---
 
 ## License
 
-MIT (c) 2025 William-1995
+MIT © 2025 William-1995
