@@ -23,3 +23,16 @@ export const LINE_COLORS = [
 
 export const SESSION_ID_PREFIX = 'web-'
 export const SESSION_ID_DISPLAY_LEN = 12
+
+/** Emotion label -> orb ring color */
+export const EMOTION_RING_COLORS: Record<string, string> = {
+  satisfied: '#22c55e',
+  relieved: '#22c55e',
+  amused: '#22c55e',
+  neutral: '#94a3b8',
+  frustrated: '#f97316',
+  disappointed: '#ef4444',
+  anxious: '#eab308',
+  confused: '#f59e0b',
+}
+export const EMOTION_RING_DEFAULT = '#94a3b8'

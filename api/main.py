@@ -44,9 +44,15 @@ from api.sessions import (
 from api.skills import list_skills as get_skills_list
 from api.state import request_cancel, submit_decision
 from api.streaming import get_streaming_response
-from api.workspace import list_workspace_files
-from config import bootstrap
+from api.workspace import (
+    list_workspace_files,
+    get_profile_image_path,
+    get_sophon_image_path,
+)
+from config import bootstrap, get_config
 from constants import API_TITLE, API_VERSION, API_DESCRIPTION
+from db.emotion import get_latest as get_latest_emotion
+from speech.router import router as speech_router
 from db.schema import ensure_db_ready, configure_default_database
 
 # ---------------------------------------------------------------------------
@@ -66,12 +72,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(speech_router)
+
 
 @app.on_event("startup")
 def startup():
     """Initialize application on startup."""
     bootstrap()
-    db_path = Path(__file__).resolve().parent.parent / "workspace" / "sophon.db"
+    # Use per-user database path from configuration (workspace/{user}/sophon.db)
+    db_path = get_config().paths.db_path()
     configure_default_database(db_path)
     ensure_db_ready(db_path)
 
@@ -104,6 +113,39 @@ def get_skills():
 def get_workspace_files(q: str = "", recent_days: int = 7):
     """List workspace files with recent files prioritized."""
     return list_workspace_files(q, recent_days)
+
+
+@app.get("/api/emotion/latest")
+def get_emotion_latest():
+    """Get most recent emotion for orb ring. Returns null when no segments."""
+    latest = get_latest_emotion()
+    return latest if latest else {"emotion_label": None, "session_id": None}
+
+
+@app.get("/api/workspace/profile-image")
+def get_profile_image():
+    """Serve user profile image (me.jpeg). 404 if not present."""
+    from fastapi.responses import FileResponse
+
+    path = get_profile_image_path()
+    if path is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404)
+    return FileResponse(path, media_type="image/jpeg")
+
+
+@app.get("/api/workspace/sophon-image")
+def get_sophon_image():
+    """Serve Sophon avatar (sophon.jpeg). 404 if not present."""
+    from fastapi.responses import FileResponse
+
+    path = get_sophon_image_path()
+    if path is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404)
+    return FileResponse(path, media_type="image/jpeg")
 
 
 # ---------------------------------------------------------------------------

@@ -44,6 +44,9 @@ class EventType(str, Enum):
     TOOL_START = "TOOL_START"
     TOOL_END = "TOOL_END"
 
+    # Emotion events (orb ring)
+    EMOTION_UPDATED = "EMOTION_UPDATED"
+
 
 # ---------------------------------------------------------------------------
 # Event type aliases for backward compatibility
@@ -65,3 +68,4 @@ DECISION_REQUIRED = EventType.DECISION_REQUIRED
 THINKING = EventType.THINKING
 TOOL_START = EventType.TOOL_START
 TOOL_END = EventType.TOOL_END
+EMOTION_UPDATED = EventType.EMOTION_UPDATED

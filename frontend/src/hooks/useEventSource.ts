@@ -12,6 +12,7 @@ interface UseEventSourceOptions {
   onRefreshTree?: RefreshFn
   onRefreshSessions?: RefreshFn
   onRefreshMessages?: (sessionId: string) => void
+  onEmotionUpdated?: (emotionLabel: string | null) => void
   currentSessionId: string | null
 }
 
@@ -20,6 +21,7 @@ export function useEventSource({
   onRefreshTree,
   onRefreshSessions,
   onRefreshMessages,
+  onEmotionUpdated,
   currentSessionId,
 }: UseEventSourceOptions): void {
   const sessionIdRef = useRef<string | null>(null)
@@ -37,6 +39,10 @@ export function useEventSource({
         const type = String(data.type ?? '')
         if (type === 'heartbeat') return
 
+        if (type === 'EMOTION_UPDATED') {
+          const label = data.emotion_label as string | undefined
+          onEmotionUpdated?.(label ?? null)
+        }
         if (type === 'TASK_STARTED' || type === 'TASK_FINISHED' || type === 'TASK_ERROR') {
           onRefreshTree?.()
           onRefreshSessions?.()
@@ -70,5 +76,5 @@ export function useEventSource({
     return () => {
       es.close()
     }
-  }, [onTaskEvent, onRefreshTree, onRefreshSessions, onRefreshMessages])
+  }, [onTaskEvent, onRefreshTree, onRefreshSessions, onRefreshMessages, onEmotionUpdated])
 }

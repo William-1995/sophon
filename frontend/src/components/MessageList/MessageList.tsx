@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Message } from '../Message/Message'
+import { Message, SophonAvatar } from '../Message/Message'
 import type { Message as MessageType } from '../../types'
 
 interface LiveEvent {
@@ -60,7 +60,6 @@ function formatEvent(evt: LiveEvent): string {
     return `Thinking: ${String(evt.content).slice(0, 60)}...`
   if (t === 'DECISION_REQUIRED') return 'Decision required'
   if (t === 'TOOL_START' && evt.skill) {
-    const key = `${String(evt.skill)}.${String(evt.action || 'run')}`
     const label = SKILL_LABELS[String(evt.skill)]
     if (label) return label
   }
@@ -96,22 +95,25 @@ export function MessageList({
           <Message key={i} message={m} />
         ))}
         {showTyping && (
-          <div className="message assistant">
-            <div className="typing">{typingText}</div>
-            {liveEvents.length > 0 && (
-              <details
-                className="live-events"
-                open={eventsExpanded}
-                onToggle={(e) => setEventsExpanded((e.target as HTMLDetailsElement).open)}
-              >
-                <summary>Current tasks ({liveEvents.length})</summary>
-                <ul>
-                  {liveEvents.map((evt, i) => (
-                    <li key={i}>{formatEvent(evt)}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
+          <div className="message-row message-row-assistant">
+            <SophonAvatar />
+            <div className="message assistant">
+              <div className="typing">{typingText}</div>
+              {liveEvents.length > 0 && (
+                <details
+                  className="live-events"
+                  open={eventsExpanded}
+                  onToggle={(e) => setEventsExpanded((e.target as HTMLDetailsElement).open)}
+                >
+                  <summary>Current tasks ({liveEvents.length})</summary>
+                  <ul>
+                    {liveEvents.map((evt, i) => (
+                      <li key={i}>{formatEvent(evt)}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
           </div>
         )}
         <div ref={chatEndRef} />

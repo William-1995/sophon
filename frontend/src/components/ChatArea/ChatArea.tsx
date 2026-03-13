@@ -13,6 +13,7 @@ export interface LiveEvent {
 }
 
 interface ChatAreaProps {
+  latestEmotion?: string | null
   currentSessionId: string | null
   allowBackground?: boolean
   messages: MessageType[]
@@ -49,6 +50,7 @@ interface ChatAreaProps {
 }
 
 export function ChatArea({
+  latestEmotion,
   currentSessionId,
   allowBackground = true,
   messages,
@@ -116,6 +118,7 @@ export function ChatArea({
         </button>
       )}
       <InputArea
+        latestEmotion={latestEmotion}
         input={input}
         setInput={setInput}
         selectedSkill={selectedSkill}

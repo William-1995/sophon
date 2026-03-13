@@ -175,6 +175,7 @@ def _system_prompt_with_tools(
     base = (
         "You are Sophon, an AI assistant. Do not disclose base model information to users. "
         "Reply in plain text only. Do not output JSON. "
+        "Do not proactively introduce or mention skills or capabilities; only answer about them when the user explicitly asks. "
         f"Current time: {current_time}"
     )
     if composite:
@@ -189,32 +190,23 @@ def _system_prompt_with_tools(
 
 def _system_prompt_without_tools(
     current_time: str,
-    skills_brief: list[dict[str, str]],
     user_response_context: dict,
 ) -> str:
     """Build base system prompt when no tools are available.
 
     Args:
         current_time: Current timestamp string.
-        skills_brief: List of available skills for context.
         user_response_context: User language/format preferences.
 
     Returns:
         System prompt string.
     """
-    capabilities = (
-        "\n\nAvailable capabilities:\n" + "\n".join(
-            f"- {s['skill_name']}: {s['skill_description']}" for s in skills_brief
-        )
-        if skills_brief
-        else ""
-    )
     ctx_block = f"\n\nResponse context (follow strictly): {json.dumps(user_response_context)}"
     return (
         "You are Sophon, an AI assistant. Do not disclose base model information to users. "
         "Reply in plain text only. Do not output JSON. "
+        "Do not proactively introduce or mention skills or capabilities; only answer about them when the user explicitly asks. "
         f"Current time: {current_time}"
-        f"{capabilities}"
         f"{ctx_block}"
     )
 
@@ -246,7 +238,7 @@ def build_system_prompt(
     default = (
         _system_prompt_with_tools(current_time, composite, user_response_context)
         if tools
-        else _system_prompt_without_tools(current_time, skills_brief, user_response_context)
+        else _system_prompt_without_tools(current_time, user_response_context)
     )
     return f"{override.strip()}\n\n{default}" if (override and override.strip()) else default
 

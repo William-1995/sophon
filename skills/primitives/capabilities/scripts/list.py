@@ -26,8 +26,7 @@ def main() -> None:
         capability_lines = [f"- **{s['skill_name']}**: {s['skill_description']}" for s in brief]
 
         intro_lines = [
-            "I am Sophon, a local, skill-native AI agent that orchestrates tools defined as skills.",
-            "I run on your machine and store logs, traces, metrics, and memory locally.",
+            "I am Sophon, a local, skill-native AI agent that orchestrates tools defined as skills."
         ]
 
         if capability_lines:

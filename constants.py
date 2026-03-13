@@ -16,6 +16,13 @@ DEFAULT_MODEL = "deepseek-chat"
 # ── Database ──────────────────────────────────────────────────────────────────
 DB_FILENAME = "sophon.db"
 
+# ── Workspace structure (workspace/{user_id}/) ──────────────────────────────────
+WORKSPACE_DOCS_DIR = "docs"
+WORKSPACE_IMAGES_DIR = "images"
+WORKSPACE_PROFILE_DIR = "images/profile"
+PROFILE_IMAGE_FILENAME = "me.jpeg"  # User avatar
+SOPHON_IMAGE_FILENAME = "sophon.jpeg"  # Sophon (assistant) avatar
+
 # ── Content display limits (characters) ──────────────────────────────────────
 MAX_CONTENT_PREVIEW = 1000
 MAX_LOG_LINE_LENGTH = 500

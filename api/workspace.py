@@ -7,7 +7,6 @@ List and query workspace files with recent files prioritization.
 from pathlib import Path
 
 from db.recent_files import get_recent
-from api.utils import get_db_path
 from config import get_config
 
 
@@ -55,3 +54,17 @@ def list_workspace_files(q: str = "", recent_days: int = 7) -> dict:
         "files": recent_valid + rest[:remaining_slots],
         "recent": recent_valid,
     }
+
+
+def get_profile_image_path() -> Path | None:
+    """Return path to user profile image (me.jpeg) if it exists."""
+    cfg = get_config()
+    p = cfg.paths.profile_image_path()
+    return p if p.exists() and p.is_file() else None
+
+
+def get_sophon_image_path() -> Path | None:
+    """Return path to Sophon avatar (sophon.jpeg) if it exists."""
+    cfg = get_config()
+    p = cfg.paths.sophon_image_path()
+    return p if p.exists() and p.is_file() else None

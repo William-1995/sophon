@@ -8,7 +8,15 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from constants import DB_FILENAME, DEFAULT_USER_ID
+from constants import (
+    DB_FILENAME,
+    DEFAULT_USER_ID,
+    PROFILE_IMAGE_FILENAME,
+    SOPHON_IMAGE_FILENAME,
+    WORKSPACE_DOCS_DIR,
+    WORKSPACE_IMAGES_DIR,
+    WORKSPACE_PROFILE_DIR,
+)
 
 ROOT = Path(__file__).resolve().parent
 SESSION_ID_LENGTH = 8
@@ -16,13 +24,40 @@ SESSION_ID_LENGTH = 8
 
 @dataclass(frozen=True)
 class PathConfig:
-    """Path configuration - workspace and DB paths per user."""
+    """Path configuration - workspace and DB paths per user.
+
+    Workspace layout: workspace/{user_id}/
+      - docs/           All user documents (file ops default here)
+      - images/         Media assets
+      - images/profile/ Profile image for orb avatar (avatar.png)
+      - sophon.db       SQLite database
+    """
 
     user_id: str = DEFAULT_USER_ID
     workspace: Path = field(default_factory=lambda: ROOT / "workspace")
 
     def user_workspace(self) -> Path:
         return self.workspace / self.user_id
+
+    def docs_dir(self) -> Path:
+        """Documents directory. Default root for file operations."""
+        return self.user_workspace() / WORKSPACE_DOCS_DIR
+
+    def images_dir(self) -> Path:
+        """Images directory."""
+        return self.user_workspace() / WORKSPACE_IMAGES_DIR
+
+    def profile_dir(self) -> Path:
+        """Profile images (e.g. orb avatar)."""
+        return self.user_workspace() / WORKSPACE_PROFILE_DIR
+
+    def profile_image_path(self) -> Path:
+        """Path to user profile image (me.jpeg)."""
+        return self.profile_dir() / PROFILE_IMAGE_FILENAME
+
+    def sophon_image_path(self) -> Path:
+        """Path to Sophon avatar (sophon.jpeg)."""
+        return self.profile_dir() / SOPHON_IMAGE_FILENAME
 
     def db_path(self) -> Path:
         """SQLite database path per user: workspace/{user}/"""
@@ -35,6 +70,9 @@ class PathConfig:
     def ensure_dirs(self) -> None:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.user_workspace().mkdir(parents=True, exist_ok=True)
+        self.docs_dir().mkdir(parents=True, exist_ok=True)
+        self.images_dir().mkdir(parents=True, exist_ok=True)
+        self.profile_dir().mkdir(parents=True, exist_ok=True)
 
 
 @dataclass(frozen=True)
@@ -137,6 +175,32 @@ class LLMConfig:
 
 
 @dataclass(frozen=True)
+class SpeechConfig:
+    """Local speech-to-text (faster-whisper) configuration."""
+
+    enabled: bool = field(
+        default_factory=lambda: os.environ.get("SOPHON_SPEECH_ENABLED", "1").lower() in ("1", "true", "yes")
+    )
+    """Enable local STT. Default on. Set SOPHON_SPEECH_ENABLED=0 to disable."""
+    model: str = field(
+        default_factory=lambda: os.environ.get("SOPHON_SPEECH_MODEL", "base")
+    )
+    """faster-whisper model: tiny, base, small, medium, large."""
+    language: str | None = field(
+        default_factory=lambda: os.environ.get("SOPHON_SPEECH_LANGUAGE") or None
+    )
+    """zh, en, or None for auto."""
+    device: str = field(
+        default_factory=lambda: os.environ.get("SOPHON_SPEECH_DEVICE", "cpu")
+    )
+    """cpu or cuda."""
+    compute_type: str = field(
+        default_factory=lambda: os.environ.get("SOPHON_SPEECH_COMPUTE", "int8")
+    )
+    """int8 for CPU, float16 for GPU."""
+
+
+@dataclass(frozen=True)
 class MCPServerConfig:
     """Configuration for a single MCP server connection."""
 
@@ -204,6 +268,7 @@ class AppConfig:
     """Complete application configuration."""
 
     paths: PathConfig = field(default_factory=PathConfig)
+    speech: SpeechConfig = field(default_factory=SpeechConfig)
     react: ReactConfig = field(default_factory=ReactConfig)
     executor: ExecutorConfig = field(default_factory=lambda: ExecutorConfig(timeout_overrides=_executor_timeout_overrides()))
     memory: MemoryConfig = field(default_factory=MemoryConfig)

@@ -12,7 +12,7 @@ import { useNotifications } from './hooks/useNotifications'
 import { ChatArea } from './components/ChatArea/ChatArea'
 import { DecisionModal } from './components/DecisionModal/DecisionModal'
 import { OrbPanel } from './components/OrbPanel/OrbPanel'
-import { fetchSkills, fetchWorkspaceFiles } from './api/resources'
+import { fetchEmotionLatest, fetchSkills, fetchWorkspaceFiles } from './api/resources'
 import { ORB_RESIZE_MIN } from './constants'
 import './App.css'
 
@@ -23,6 +23,7 @@ function App() {
   const [showFileDropdown, setShowFileDropdown] = useState(false)
   const [fileQuery, setFileQuery] = useState('')
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const [latestEmotion, setLatestEmotion] = useState<string | null>(null)
 
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -65,6 +66,7 @@ function App() {
     onRefreshTree: () => refreshRefs.fetchSessionTree.current?.(),
     onRefreshSessions: () => refreshRefs.fetchSessions.current?.(),
     onRefreshMessages: (id) => refreshRefs.fetchMessages.current?.(id),
+    onEmotionUpdated: (label) => setLatestEmotion(label ?? null),
     currentSessionId,
   })
 
@@ -73,6 +75,10 @@ function App() {
   useEffect(() => {
     fetchSkills().then(setSkills)
     fetchWorkspaceFiles().then(setWorkspaceFiles)
+  }, [])
+
+  useEffect(() => {
+    fetchEmotionLatest().then((r) => setLatestEmotion(r.emotion_label ?? null))
   }, [])
 
   // Keep session tree up to date so we can reliably detect child sessions
@@ -179,6 +185,7 @@ function App() {
       )}
       <div className="main">
         <ChatArea
+          latestEmotion={latestEmotion}
           currentSessionId={currentSessionId}
           allowBackground={!isChildSession}
           messages={messages}
@@ -214,6 +221,7 @@ function App() {
           inputRef={inputRef}
         />
         <OrbPanel
+          latestEmotion={latestEmotion}
           currentSessionId={currentSessionId}
           orbOpen={orbPanel.orbOpen}
           setOrbOpen={orbPanel.setOrbOpen}

@@ -2,11 +2,18 @@
  * OrbPanel - sessions tree, recent tasks, skills, workspace.
  */
 
+import { useState } from 'react'
+import {
+  API_BASE,
+  EMOTION_RING_COLORS,
+  EMOTION_RING_DEFAULT,
+} from '../../constants'
 import { formatSessionId } from '../../utils/session'
 import { OrbPagination } from './OrbPagination'
 import type { TreeRoot, ChildSession, Skill } from '../../types'
 
 interface OrbPanelProps {
+  latestEmotion: string | null
   currentSessionId: string | null
   orbOpen: boolean
   setOrbOpen: React.Dispatch<React.SetStateAction<boolean>>
@@ -44,6 +51,7 @@ interface OrbPanelProps {
 
 export function OrbPanel(props: OrbPanelProps) {
   const {
+    latestEmotion,
     currentSessionId,
     orbOpen,
     setOrbOpen,
@@ -81,6 +89,17 @@ export function OrbPanel(props: OrbPanelProps) {
 
   const sessionLabel = (id: string) =>
     id.replace(/^web-/, '').slice(0, 8)
+
+  const profileImageUrl = `${API_BASE || ''}/api/workspace/sophon-image`
+  const [profileImageFailed, setProfileImageFailed] = useState(false)
+  const showProfileImage = !profileImageFailed
+
+  const ringColor =
+    latestEmotion && EMOTION_RING_COLORS[latestEmotion.toLowerCase()]
+      ? EMOTION_RING_COLORS[latestEmotion.toLowerCase()]
+      : latestEmotion
+        ? EMOTION_RING_DEFAULT
+        : undefined
 
   const pagination = (
     page: number,
@@ -313,9 +332,17 @@ export function OrbPanel(props: OrbPanelProps) {
           aria-label="Resize panel (top-left)"
         />
       </div>
+      <div
+        className="orb-ball-wrap"
+        style={
+          ringColor
+            ? { '--orb-ring-color': ringColor } as React.CSSProperties
+            : undefined
+        }
+      >
       <button
         type="button"
-        className={`orb-ball ${orbOpen ? 'open' : ''}`}
+        className={`orb-ball ${orbOpen ? 'open' : ''} ${ringColor ? 'orb-ball-ring' : ''}`}
         onPointerDown={onOrbPointerDown}
         onPointerUp={() => onOrbPointerUp()}
         onPointerCancel={() => onOrbPointerCancel()}
@@ -323,8 +350,20 @@ export function OrbPanel(props: OrbPanelProps) {
         aria-label={orbOpen ? 'Close menu' : 'Open menu'}
         aria-expanded={orbOpen}
       >
-        <span className="orb-icon">{orbOpen ? '×' : '◉'}</span>
+        {orbOpen ? (
+          <span className="orb-icon">×</span>
+        ) : showProfileImage ? (
+          <img
+            src={profileImageUrl}
+            alt=""
+            className="orb-avatar"
+            onError={() => setProfileImageFailed(true)}
+          />
+        ) : (
+          <span className="orb-icon">◉</span>
+        )}
       </button>
+      </div>
     </div>
   )
 }

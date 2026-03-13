@@ -69,7 +69,6 @@ CREATE TABLE IF NOT EXISTS memory_cache (
     created_at REAL DEFAULT (unixepoch())
 );
 
--- Memory long-term: conversation history and insights
 CREATE TABLE IF NOT EXISTS memory_long_term (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
@@ -86,6 +85,25 @@ CREATE TABLE IF NOT EXISTS recent_files (
     last_used_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_recent_last_used ON recent_files(last_used_at);
+
+-- Emotion segments: user+system weighted summary per time window (optional feature)
+CREATE TABLE IF NOT EXISTS emotion_segments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    parent_session_id TEXT,
+    start_at REAL NOT NULL,
+    end_at REAL NOT NULL,
+    user_weight REAL NOT NULL DEFAULT 0.8,
+    system_weight REAL NOT NULL DEFAULT 0.2,
+    user_summary TEXT,
+    system_summary TEXT,
+    emotion_label TEXT,
+    combined_summary TEXT,
+    created_at REAL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_emotion_session ON emotion_segments(session_id);
+CREATE INDEX IF NOT EXISTS idx_emotion_end_at ON emotion_segments(end_at);
+CREATE INDEX IF NOT EXISTS idx_emotion_parent ON emotion_segments(parent_session_id);
 
 -- Session meta: parent/child and status for async tasks (parent_id NULL = root)
 CREATE TABLE IF NOT EXISTS session_meta (

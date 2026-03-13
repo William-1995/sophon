@@ -21,6 +21,7 @@ from config import get_config
 from constants import DEFAULT_USER_ID
 from core.react import run_react
 from db import memory_long_term
+from api.emotion import enqueue_segment_analysis
 from db.logs import insert as log_insert
 from providers import get_provider
 
@@ -81,6 +82,12 @@ async def handle_chat(req: ChatRequest) -> ChatResponse:
             memory_long_term.insert(
                 db_path, session_id, "assistant", answer,
                 references=refs if refs else None,
+            )
+            enqueue_segment_analysis(
+                db_path=db_path,
+                session_id=session_id,
+                user_message=modified_question,
+                assistant_message=answer,
             )
 
         return ChatResponse(
