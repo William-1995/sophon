@@ -113,12 +113,13 @@ cd frontend && npm install && npm run dev  # UI at http://localhost:5173
 - **SKILL.md standard**: Portable across any compatible runtime ([agentskills.io](https://agentskills.io/))
 - **Auto-discovery**: Add/remove capabilities by creating/deleting folders
 - **Self-contained**: Each skill owns its logic, constants, and dependencies
+- **@file injection**: Reference files in questions with `@filename`; contents auto-injected. Configurable via `FileInjectionConfig` (skill/action).
 
 **Multi-Session Architecture**
 Sophon supports complex multi-task workflows through its parent-child session model:
 - **Concurrent tasks**: Run multiple independent tasks simultaneously, each in its own session
 - **Parent-child hierarchy**: Background tasks spawn child sessions; parent receives summaries while child contains full details
-- **Cancel & resume**: Interrupt long-running tasks anytime; resume from any point in session history
+- **Cancel & resume**: Interrupt long-running tasks anytime. **Resumable** only when checkpoint was saved (streaming cancel); HITL cancel does not offer resume. Resume button shown only when `resumable=true`.
 - **Continue anywhere**: Jump into any child session to continue the conversation
 - **Session-level concurrency**: Each session operates independently with isolated context and state
 
@@ -138,7 +139,7 @@ Engineers can build sophisticated capabilities by composing existing skills:
 **Engineering-First Design**
 - **Human-curated capabilities**: Complex skills designed, tested, and validated by engineers
 - **Structured abstraction**: Clear boundaries between what AI decides vs what skills execute
-- **Human-in-the-loop**: Delegate tasks to the agent, review progress, intervene when needed
+- **Human-in-the-loop (HITL)**: Two modes — (1) generic `request_human_decision` tool: the main agent invokes it when it needs user input; (2) skill-triggered two-phase flow: skills return `__decision_request` (e.g. delete confirmation). Frontend shows modal; user choice flows via `_decision_choice`. Skills can signal early exit with `_abort_run`.
 - **Predictable behavior**: No arbitrary code generation or execution
 
 **Security & Safety**
@@ -182,7 +183,7 @@ Built-in voice input using faster-whisper (local, no cloud):
 |-------|-------------|
 | `search` | Web search via DuckDuckGo |
 | `crawler` | Scrape & extract content with Playwright |
-| `filesystem` | Read, write, list workspace files |
+| `filesystem` | Read, write, list workspace files. Delete supports two-phase confirmation (HITL). |
 | `time` | Timezone conversion, date formatting |
 | `deep-recall` | Context exploration powered by RLM-inspired recursive search — intelligently navigates short-term (cached) and long-term (persistent) context across sessions |
 | `log-analyze` | Query and analyze application logs |
@@ -262,8 +263,7 @@ Sophon can use different LLM providers; configure **exactly one** in `.env`:
 
 - **DeepSeek (cloud)**: set `DEEPSEEK_API_KEY` (and optional `DEEPSEEK_MODEL`).
 - **Qwen/DashScope (cloud)**: set `DASHSCOPE_API_KEY` (and optional `QWEN_MODEL`, e.g. `qwen-plus`).
-- **Ollama (local)**: ensure Ollama is running and choose a non-thinking model, e.g.:
-  - `ollama run qwen3.5:9b --think=false`
+- **Ollama (local)**: ensure Ollama is running. Default model: `qwen3.5:4b`. Example: `ollama run qwen3.5:4b --think=false`
 
 If you accidentally configure multiple providers, Sophon will prioritize: DeepSeek > Qwen > Ollama.
 

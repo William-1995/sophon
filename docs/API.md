@@ -66,11 +66,31 @@ Content-Type: application/json
   "message": "Your message here",
   "skill": "optional-skill-name",
   "model": "optional-model-name",
-  "session_id": "optional-existing-session"
+  "session_id": "optional-existing-session",
+  "resume_run_id": "optional-run-id-to-resume-from"
 }
 ```
 
-Returns Server-Sent Events (SSE) stream with response chunks.
+Returns Server-Sent Events (SSE) stream. When backend emits `DECISION_REQUIRED`, client should show modal and submit choice via `POST /api/runs/{run_id}/decision`. On `RUN_FINISHED`, `result.resumable` indicates whether Resume is available (only when cancelled with checkpoint saved).
+
+### HITL Decision
+
+```http
+POST /api/runs/{run_id}/decision
+Content-Type: application/json
+
+{ "choice": "Confirm" }
+```
+
+Submit user choice for Human-in-the-Loop. Unblocks the waiting run.
+
+### Emotion (Orb Ring)
+
+```http
+GET /api/emotion/latest
+```
+
+Returns `{ emotion_label, session_id }` for the most recent emotion segment. Used for orb ring color.
 
 ## OpenAI Compatibility
 
@@ -86,9 +106,9 @@ Compatible with OpenAI SDK and tools.
 
 SSE events use the AG-UI protocol:
 
-- `message` - Text response chunks
-- `tool_call` - Tool execution started
-- `tool_result` - Tool execution completed
-- `reference` - Citation/reference added
-- `done` - Response complete
-- `error` - Error occurred
+- `RUN_STARTED` / `RUN_FINISHED` / `RUN_CANCELLED` / `RUN_ERROR` — Run lifecycle
+- `TEXT_MESSAGE_*` — Text chunks
+- `TOOL_START` / `TOOL_END` — Tool execution
+- `DECISION_REQUIRED` — HITL: backend awaits user choice; client posts to `/api/runs/{run_id}/decision`
+- `CUSTOM` (name: progress, sophon_event, gen_ui) — Progress, skill events, generated UI
+- `THINKING` — LLM reasoning blocks

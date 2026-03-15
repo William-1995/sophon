@@ -112,16 +112,21 @@ metadata:
 
 Located in `core/react/`:
 
-- `main.py` - Main orchestration loop
-- `preparation.py` - Run setup, skill selection
-- `execution.py` - Tool call execution
-- `finalization.py` - Answer generation
+| Module | Responsibility |
+|--------|----------------|
+| `main.py` | Main orchestration loop; cancel/resume; `abort_run` handling |
+| `preparation.py` | Run setup, skill selection, @file injection, tool building |
+| `execution.py` | Tool call execution; path lock acquisition; HITL two-phase flow; `check_cancel_after_tools` |
+| `finalization.py` | Answer generation, eval |
+| `context.py` | `ImmutableRunContext`, `MutableRunState` (includes `resumable`) |
+| `utils.py` | Truncation, checkpoint save, thinking extraction |
 
 ### Flow
 
 1. **Round 1**: LLM selects relevant skills from exposed list
-2. **Round N**: Thought → Action → Observation (parallel tool execution)
-3. **Final**: Summarize with merged, deduplicated references
+2. **Round N**: Thought → Action → Observation (parallel tool execution; path locks per call)
+3. **HITL**: If skill returns `__decision_request`, emit DECISION_REQUIRED, re-invoke with `_decision_choice`. If skill returns `_abort_run`, exit immediately.
+4. **Final**: Summarize with merged, deduplicated references; return `{cancelled?, resumable?}` when cancelled
 
 ### Safeguards
 
@@ -129,7 +134,44 @@ Located in `core/react/`:
 |------|------------|
 | Concurrency explosion | `max_parallel_tool_calls` (default 10) limits concurrent executions |
 | Skill call cycles | Call-stack detection rejects A→B→A; DAG validation at load time |
-| File write race | Path-based locks serialize filesystem operations |
+| File write race | **Path lock** (see below): registry + adapters serialize `filesystem.write` / `delete` / `rename` to same path |
+
+### Path Lock (Concurrency Control)
+
+To prevent races when parallel tool calls target the same files, Sophon uses a **path lock** system with an adapter-based registry:
+
+- **Registry**: `core/path_lock.py` — `(skill_name, action) → path_extractor(arguments)`. The framework does not know skill internals; adapters opt-in.
+- **Adapters**: `core/adapters/filesystem_lock.py` registers extractors for `filesystem.write`, `filesystem.delete`, `filesystem.rename`. Each returns `[path1, path2, ...]` from skill arguments.
+- **Execution**: Before running a tool call, `execution.py` calls `get_locks_for_tool_call(workspace_root, skill_name, action, arguments)`, acquires locks for returned paths (in deterministic order to avoid deadlock), then runs the skill.
+- **Fallback**: Skills without registered extractors get no locks; no blocking.
+
+### Human-in-the-Loop (HITL)
+
+Sophon supports two HITL modes:
+
+**1. Generic tool: `request_human_decision`**
+
+- When `SOPHON_HITL_ENABLED=true`, the main agent receives a synthetic tool with `message` and `choices`.
+- The agent can call it whenever it needs user input (e.g. repeated translation, ambiguous options).
+- Frontend receives `DECISION_REQUIRED` (SSE) and shows a modal; user choice is sent via `POST /api/runs/{run_id}/decision`.
+
+**2. Skill-triggered two-phase flow**
+
+- A skill returns `__decision_request` (constant `DECISION_REQUEST_KEY`) with `{message, choices, payload?}`.
+- The execution layer suspends, emits `DECISION_REQUIRED`, and waits for user choice.
+- User choice is merged as `_decision_choice` and the skill is re-invoked with the merged arguments.
+- If the user cancels (e.g. chooses "Cancel"), the skill returns `_abort_run: true` (constant `ABORT_RUN_KEY`). The main agent stops immediately.
+
+**Constants** (`constants.py`): `DECISION_REQUEST_KEY = "__decision_request"`, `ABORT_RUN_KEY = "_abort_run"`.
+
+**Resumable**: Only when a checkpoint was saved (streaming cancel). HITL cancel does not save a checkpoint; `resumable=false` → frontend does not show Resume button.
+
+### @file Injection
+
+Questions can reference files with `@filename`. The preparation layer (`inject_file_contents` in `preparation.py`) auto-reads file contents via a configurable skill/action:
+
+- **Config**: `FileInjectionConfig` in `config.py` — `skill` (default `filesystem`), `action` (default `read`).
+- **Flow**: Regex `@([^\s]+)` finds references → calls `execute_skill(skill, action, {path})` → injects content into context messages, replaces `@filename` in question with plain filename.
 
 ## Database Layer
 
@@ -153,23 +195,34 @@ Modular LLM provider abstraction in `providers/`:
 
 FastAPI server with modular endpoints:
 
-- Streaming chat with SSE
-- Session management
-- Async task handling
-- OpenAI-compatible endpoints
-- AG-UI protocol support
+- **Streaming chat** (`/api/chat`): SSE with AG-UI protocol. Emits `RUN_STARTED`, `TOOL_START`, `TOOL_END`, `DECISION_REQUIRED`, `RUN_FINISHED` (with `result.resumable` when cancelled). `decision_handler` pushes DECISION_REQUIRED to stream queue and awaits user choice via `wait_for_decision`.
+- **HITL decision** (`POST /api/runs/{run_id}/decision`): Submit user choice; unblocks `wait_for_decision`.
+- **Session management**, async tasks, OpenAI-compatible endpoints.
 
 ## Configuration
 
 Key environment variables:
 
-- `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` - LLM providers
-- `SOPHON_HITL_ENABLED` - Human-in-the-loop toggle
-- `SOPHON_THINKING_ENABLED` - LLM reasoning visibility
-- `SOPHON_SPEECH_ENABLED` - Local STT toggle
-- `SOPHON_MCP_BRIDGE_URL` - MCP integration endpoint
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEEPSEEK_API_KEY` | — | DeepSeek cloud provider |
+| `DASHSCOPE_API_KEY` | — | Qwen/DashScope provider |
+| `SOPHON_HITL_ENABLED` | true | Add `request_human_decision` tool |
+| `SOPHON_THINKING_ENABLED` | true | Parse and emit `<thinking>` blocks |
+| `SOPHON_EMOTION_ENABLED` | true | Run emotion segment analysis after each run |
+| `SOPHON_SPEECH_ENABLED` | 1 | Local STT (faster-whisper) |
+| `SOPHON_MCP_BRIDGE_URL` | — | MCP integration endpoint |
 
-See `config.py` and `constants.py` for all configuration options.
+Config classes: `FileInjectionConfig`, `EmotionConfig`, `ReactConfig`, `SkillConfig`, etc. See `config.py`.
+
+### Key Constants (`constants.py`)
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `DECISION_REQUEST_KEY` | `__decision_request` | Skill output key for two-phase HITL |
+| `ABORT_RUN_KEY` | `_abort_run` | Skill output key for early exit |
+| `DEFAULT_MODEL` | `qwen3.5:4b` | Default LLM model (Ollama) |
+| `FILE_INJECTION_MAX_LEN` | 3000 | Max chars per @file content |
 
 ## Event IPC (Subprocess Progress)
 
@@ -281,10 +334,12 @@ Sophon includes self-monitoring capabilities:
 
 ### Emotion Awareness
 
-The system can detect and respond to user emotional cues:
-- Sentiment analysis of user inputs
-- Adaptive response tone based on detected emotion
-- Escalation patterns for frustration or confusion
+Optional feature (`SOPHON_EMOTION_ENABLED`, default on). An async sub-agent analyzes session segments (user questions + assistant replies) via LLM and persists summaries to `emotion_segments` table.
+
+- **Storage**: `db/emotion.py` — inserts segments with `emotion_label` (e.g. `neutral`, `frustrated`, `satisfied`).
+- **Orb ring**: Frontend `EMOTION_RING_COLORS` maps `emotion_label` → hex color. Six distinct colors for: satisfied/relieved/amused (green), neutral (gray), frustrated (orange), disappointed (red), anxious (yellow), confused (amber).
+- **API**: `GET /api/emotion/latest` returns `{emotion_label, session_id}` for orb ring. `EMOTION_UPDATED` SSE event pushes updates.
+- **Skill**: `emotion-awareness.run` (optional) retrieves segments for "how's my mood" queries. Task helper `enqueue_segment_analysis` runs after each completed run when emotion is enabled.
 
 ### Real-Time Streaming
 
@@ -378,10 +433,11 @@ Main Session
    - Cancel child session anytime
    - Resume child session later
 
-### Human-in-the-Loop
+### Human-in-the-Loop (Summary)
 
-Sophon supports human intervention points:
-- **Decision gates**: Agent pauses for human approval before critical actions
-- **Progress review**: Real-time visibility into what agent is doing
-- **Intervention**: Cancel, modify, or redirect tasks mid-execution
-- **Delegation**: Give high-level commands, let agent figure out execution
+See [Human-in-the-Loop (HITL)](#human-in-the-loop-hitl) above for full design. Key points:
+
+- **Decision gates**: Agent pauses for human approval before critical actions; skills can request confirmation via `__decision_request`
+- **Progress review**: Real-time visibility via SSE (TOOL_START, TOOL_END, THINKING, DECISION_REQUIRED)
+- **Intervention**: Cancel, modify, or redirect; `_abort_run` signals early exit when user cancels HITL
+- **Delegation**: Give high-level commands; agent uses `request_human_decision` when it needs user input
