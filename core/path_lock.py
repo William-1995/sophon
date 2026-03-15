@@ -1,6 +1,9 @@
 """
-File path lock for filesystem skill - prevents race when parallel tool calls
-write to the same file.
+Path-based lock for tool calls - prevents race when parallel tool executions
+target the same paths (e.g. write/delete/rename).
+
+Skills opt-in via adapters that register (skill_name, action) -> path extractor.
+Framework is agnostic: only checks the registry.
 """
 
 import asyncio
@@ -10,6 +13,18 @@ from pathlib import Path
 from typing import Callable
 
 logger = logging.getLogger(__name__)
+
+# Registry: (skill_name, action) -> extractor(args: dict) -> list[str]
+_PATH_EXTRACTORS: dict[tuple[str, str], Callable[[dict], list[str]]] = {}
+
+
+def register_path_extractor(
+    skill_name: str,
+    action: str,
+    extractor: Callable[[dict], list[str]],
+) -> None:
+    """Register path extractor for (skill_name, action). Adapters call this on import."""
+    _PATH_EXTRACTORS[(skill_name, action)] = extractor
 
 
 @asynccontextmanager
@@ -52,42 +67,27 @@ def _get_path_lock(workspace_root: Path, path: str) -> asyncio.Lock:
     key = _lock_key(workspace_root, path)
     if key not in _PATH_LOCKS:
         if len(_PATH_LOCKS) >= _PATH_LOCK_MAX:
-            # Evict oldest (arbitrary); in practice rarely hit
             evict = next(iter(_PATH_LOCKS))
             del _PATH_LOCKS[evict]
         _PATH_LOCKS[key] = asyncio.Lock()
     return _PATH_LOCKS[key]
 
 
-def _paths_for_write(args: dict) -> list[str]:
-    path = args.get("path")
-    return [path] if path else []
-
-
-def _paths_for_delete(args: dict) -> list[str]:
-    path = args.get("path")
-    files = [f for f in args.get("files") or [] if isinstance(f, str)]
-    return sorted(set(filter(None, [path] + files)))[:3]
-
-
-def _paths_for_rename(args: dict) -> list[str]:
-    return sorted(set(filter(None, [args.get("path"), args.get("new_name")])))[:2]
-
-
-_PATH_EXTRACTORS: dict[str, Callable[[dict], list[str]]] = {
-    "write": _paths_for_write,
-    "delete": _paths_for_delete,
-    "rename": _paths_for_rename,
-}
-
-
-def get_locks_for_filesystem_call(
+def get_locks_for_tool_call(
     workspace_root: Path,
     skill_name: str,
     action: str,
     arguments: dict,
 ) -> list[asyncio.Lock]:
-    """Return locks to acquire for filesystem write/delete/rename. Sorted to avoid deadlock."""
-    extract = _PATH_EXTRACTORS.get(action) if skill_name == "filesystem" else None
+    """Return locks to acquire for (skill_name, action). Uses registry; no skill-specific logic."""
+    extract = _PATH_EXTRACTORS.get((skill_name, action))
     paths = extract(arguments) if extract else []
     return [_get_path_lock(workspace_root, p) for p in paths]
+
+
+# Import adapters to populate registry (deferred to avoid circular import)
+def _register_builtin_adapters() -> None:
+    from core.adapters import filesystem_lock  # noqa: F401
+
+
+_register_builtin_adapters()

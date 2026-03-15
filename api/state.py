@@ -145,7 +145,12 @@ async def submit_decision(run_id: str, choice: str) -> None:
         logger.warning("Decision queue full for run_id=%s", run_id)
 
 
-async def wait_for_decision(run_id: str, message: str, choices: list[str]) -> str:
+async def wait_for_decision(
+    run_id: str,
+    message: str,
+    choices: list[str],
+    payload: dict[str, Any] | None = None,
+) -> str:
     """Wait for a user decision via HITL.
 
     Emits DECISION_REQUIRED event and waits for user response.
@@ -154,6 +159,7 @@ async def wait_for_decision(run_id: str, message: str, choices: list[str]) -> st
         run_id: Run identifier.
         message: Question or context for the user.
         choices: List of available choices.
+        payload: Optional extra data (e.g. {"files": [...]}) for frontend display.
 
     Returns:
         The user's selected choice.
@@ -161,13 +167,16 @@ async def wait_for_decision(run_id: str, message: str, choices: list[str]) -> st
     Raises:
         asyncio.TimeoutError: If user does not respond within timeout.
     """
-    # Emit decision required event
-    broadcast_event({
+    event: dict[str, Any] = {
         "type": DECISION_REQUIRED.value,
         "runId": run_id,
         "message": message,
         "choices": choices,
-    })
+    }
+    if payload:
+        event["payload"] = payload
+    logger.info("[hitl] emit DECISION_REQUIRED run_id=%s choices=%s", run_id, choices)
+    broadcast_event(event)
 
     if run_id not in _decision_queues:
         _decision_queues[run_id] = asyncio.Queue()

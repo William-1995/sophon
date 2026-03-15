@@ -133,6 +133,42 @@ class MemoryConfig:
 
 
 @dataclass(frozen=True)
+class FileInjectionConfig:
+    """@file reference injection - configurable skill/action for reading file content."""
+
+    skill: str = "filesystem"
+    """Skill to call for reading @filename content."""
+    action: str = "read"
+    """Action to invoke. Arguments: path=<filename>."""
+
+
+@dataclass(frozen=True)
+class EmotionConfig:
+    """Emotion awareness - LLM sub-agent perceives user emotion from conversation.
+
+    When enabled, async sub-agent analyzes session segment (user questions + replies)
+    via LLM and writes summaries to DB. Skill retrieves on demand.
+    """
+
+    enabled: bool = field(
+        default_factory=lambda: os.environ.get("SOPHON_EMOTION_ENABLED", "true").lower() in ("1", "true", "yes")
+    )
+    """When True, run emotion analysis after each run. Default on. SOPHON_EMOTION_ENABLED=0 to disable."""
+    model: str | None = field(
+        default_factory=lambda: os.environ.get("SOPHON_EMOTION_MODEL") or None
+    )
+    """Model for emotion sub-agent. If None, uses default chat model. SOPHON_EMOTION_MODEL to override."""
+    user_weight: float = field(
+        default_factory=lambda: float(os.environ.get("SOPHON_EMOTION_USER_WEIGHT", "0.8"))
+    )
+    """Weight for user signal (tone, messages). Default 0.8."""
+    system_weight: float = field(
+        default_factory=lambda: float(os.environ.get("SOPHON_EMOTION_SYSTEM_WEIGHT", "0.2"))
+    )
+    """Weight for system signal (tool chain, outcomes). Default 0.2."""
+
+
+@dataclass(frozen=True)
 class SkillConfig:
     """Skill configuration - entry points exposed to users (no hardcoding in loader)."""
 
@@ -268,6 +304,8 @@ class AppConfig:
     """Complete application configuration."""
 
     paths: PathConfig = field(default_factory=PathConfig)
+    file_injection: FileInjectionConfig = field(default_factory=FileInjectionConfig)
+    emotion: EmotionConfig = field(default_factory=EmotionConfig)
     speech: SpeechConfig = field(default_factory=SpeechConfig)
     react: ReactConfig = field(default_factory=ReactConfig)
     executor: ExecutorConfig = field(default_factory=lambda: ExecutorConfig(timeout_overrides=_executor_timeout_overrides()))

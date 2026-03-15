@@ -76,6 +76,15 @@ EVAL_MIN_OBSERVATIONS = 2
 # Regex to extract satisfied JSON from eval LLM response
 EVAL_SATISFIED_JSON_PATTERN = r'\{[^{}]*"satisfied"[^{}]*\}'
 
+# ── Skill decision request (two-phase confirm flow) ───────────────────────────
+# When a skill outputs this key, execution layer triggers HITL and re-invokes with _decision_choice
+DECISION_REQUEST_KEY = "__decision_request"
+
+# ── Framework contract: early exit ─────────────────────────────────────────────
+# When a skill/sub-agent returns this key as true, the main agent stops immediately.
+# Skills opt-in by including _abort_run: true (e.g. user cancelled HITL).
+ABORT_RUN_KEY = "_abort_run"
+
 # ── File injection (@file auto-read) ───────────────────────────────────────────
 FILE_INJECTION_MAX_LEN = 3000  # Max characters per file content injected into context
 
@@ -115,3 +124,8 @@ SECONDS_PER_DAY = 86400
 SQL_DEFAULT_LIMIT = 200
 SQL_DATE_FORMAT = "%Y-%m-%d"
 SQL_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# ── Emotion awareness (optional feature) ─────────────────────────────────────────
+EMOTION_USER_WEIGHT_DEFAULT = 0.8
+EMOTION_SYSTEM_WEIGHT_DEFAULT = 0.2
+EMOTION_RECENT_HOURS_DEFAULT = 2.0

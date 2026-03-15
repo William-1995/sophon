@@ -10,9 +10,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from constants import ABORT_RUN_KEY, DECISION_REQUEST_KEY
 from core.agent_loop import parse_tool_calls
 from core.executor import execute_skill
-from core.file_lock import get_locks_for_filesystem_call, maybe_acquire_path_locks
+from core.path_lock import get_locks_for_tool_call, maybe_acquire_path_locks
 from core.react.context import ImmutableRunContext, MutableRunState
 from core.react.preparation import HITL_TOOL_NAME
 from core.react.utils import format_skill_observation, save_cancel_checkpoint
@@ -30,7 +31,7 @@ async def execute_tool_calls_batch(
     event_sink: Any = None,
     run_id: str | None = None,
     decision_waiter: Any = None,
-) -> tuple[list[str], dict[str, Any] | None, str | None, list[dict]]:
+) -> tuple[list[str], dict[str, Any] | None, str | None, list[dict], bool]:
     """Execute tool calls in parallel with semaphore.
 
     Args:
@@ -45,7 +46,8 @@ async def execute_tool_calls_batch(
         decision_waiter: Optional HITL decision waiter.
 
     Returns:
-        Tuple of (observations, gen_ui, direct_answer, references).
+        Tuple of (observations, gen_ui, direct_answer, references, abort_run).
+        abort_run: True when a skill returned _abort_run (early exit requested).
     """
     sem = asyncio.Semaphore(max_parallel)
 
@@ -73,7 +75,8 @@ async def execute_tool_calls_batch(
     gen_ui: dict[str, Any] | None = None
     direct_answer: str | None = None
     all_refs: list[dict] = []
-    for obs, gu, ans, refs in results:
+    abort_run = False
+    for obs, gu, ans, refs, abort in results:
         observations.append(obs)
         if gu is not None:
             gen_ui = gu
@@ -81,7 +84,9 @@ async def execute_tool_calls_batch(
             direct_answer = ans
         if refs:
             all_refs.extend(refs)
-    return observations, gen_ui, direct_answer, all_refs
+        if abort:
+            abort_run = True
+    return observations, gen_ui, direct_answer, all_refs, abort_run
 
 
 async def execute_tool_call(
@@ -97,7 +102,7 @@ async def execute_tool_call(
     event_sink: Any = None,
     run_id: str | None = None,
     decision_waiter: Any = None,
-) -> tuple[str, dict | None, str | None, list[dict]]:
+) -> tuple[str, dict | None, str | None, list[dict], bool]:
     """Execute a single skill tool call.
 
     Args:
@@ -115,12 +120,13 @@ async def execute_tool_call(
         decision_waiter: Optional HITL decision waiter.
 
     Returns:
-        Tuple of (observation, gen_ui, direct_answer, references).
+        Tuple of (observation, gen_ui, direct_answer, references, abort_run).
     """
     if name == HITL_TOOL_NAME and decision_waiter:
-        return await handle_hitl_tool_call(name, arguments, decision_waiter, gen_ui_collected)
+        ret = await handle_hitl_tool_call(name, arguments, decision_waiter, gen_ui_collected)
+        return (*ret, False)  # HITL tool has no skill cancelled
 
-    path_locks = get_locks_for_filesystem_call(workspace_root, name, tool, arguments)
+    path_locks = get_locks_for_tool_call(workspace_root, name, tool, arguments)
     async with maybe_acquire_path_locks(path_locks):
         emit_tool_start(event_sink, name, tool, display_summary)
         result = await execute_skill(
@@ -135,8 +141,40 @@ async def execute_tool_call(
             run_id=run_id,
             agent_id=name,
         )
+
+        # Two-phase flow: skill requested user confirmation
+        dr = result.get(DECISION_REQUEST_KEY)
+        if isinstance(dr, dict) and dr.get("message") and dr.get("choices"):
+            choice: str
+            if decision_waiter:
+                payload = dr.get("payload")
+                choice = await decision_waiter(
+                    str(dr["message"]),
+                    [str(c) for c in dr["choices"]],
+                    payload=payload if isinstance(payload, dict) else None,
+                )
+            else:
+                choice = str(dr["choices"][0]) if dr["choices"] else ""
+            merged = dict(arguments, _decision_choice=choice)
+            result = await execute_skill(
+                skill_name=name,
+                action=tool,
+                arguments=merged,
+                workspace_root=workspace_root,
+                session_id=session_id,
+                user_id=user_id,
+                db_path=db if db.exists() else None,
+                event_sink=event_sink,
+                run_id=run_id,
+                agent_id=name,
+            )
+
     emit_tool_end(event_sink, name, tool, result.get("error"))
-    return result_to_observation_and_extras(name, tool, result, gen_ui_collected)
+    obs, gu, direct, refs = result_to_observation_and_extras(name, tool, result, gen_ui_collected)
+    abort_run = bool(result.get(ABORT_RUN_KEY))
+    if abort_run:
+        logger.info("[react] skill requested early exit %s.%s run_id=%s", name, tool, run_id)
+    return obs, gu, direct, refs, abort_run
 
 
 async def handle_hitl_tool_call(
@@ -290,6 +328,7 @@ def check_cancel_after_tools(
             messages=msg_extended,
         )
     state.cancelled = True
+    state.resumable = True  # Checkpoint saved; user can resume
     return True
 
 

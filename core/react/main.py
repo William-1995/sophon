@@ -229,6 +229,7 @@ def check_cancel_at_round_start(
             messages=ctx.messages,
         )
     state.cancelled = True
+    state.resumable = True  # Checkpoint saved; user can resume
     return True
 
 
@@ -330,7 +331,7 @@ async def run_react_rounds(
             ctx.messages.append({"role": "assistant", "content": resp.get("content", "")})
             return
 
-        obs_list, gu, direct, refs = await execute_tool_calls_batch(
+        obs_list, gu, direct, refs, abort_run = await execute_tool_calls_batch(
             calls,
             ctx.workspace_root,
             ctx.session_id,
@@ -344,6 +345,11 @@ async def run_react_rounds(
         if check_cancel_after_tools(
             cancel_check, ctx, state, round_num, run_id, resp, obs_list
         ):
+            return
+        if abort_run:
+            logger.info("[react] early exit requested by skill run_id=%s", run_id)
+            merge_round_into_state(state, obs_list, gu, direct, refs)
+            state.cancelled = True
             return
         merge_round_into_state(state, obs_list, gu, direct, refs)
         satisfied = await append_round_and_evaluate(
@@ -424,6 +430,7 @@ async def run_react(
             "gen_ui": state.gen_ui_collected,
             "references": list(state.all_references),
             "cancelled": True,
+            "resumable": state.resumable,
         }
     final_answer, total_tokens = await finalize_react_answer(
         ctx=ctx, state=state, provider=provider,

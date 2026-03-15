@@ -22,6 +22,7 @@ from api.event_types import (
     TEXT_MESSAGE_CONTENT,
     TEXT_MESSAGE_END,
     CUSTOM,
+    DECISION_REQUIRED,
 )
 from api.models import ChatRequest
 from api.state import (
@@ -45,6 +46,7 @@ from constants import DEFAULT_USER_ID
 from core.react import run_react
 from db import memory_long_term
 from db import checkpoints as db_checkpoints
+from api.emotion import enqueue_segment_analysis
 from db.logs import insert as log_insert
 from providers import get_provider
 
@@ -157,10 +159,28 @@ async def _stream_chat_generator(req: ChatRequest):
         """Check if run has been cancelled."""
         return is_cancelled(run_id)
 
-    # Setup HITL decision handler
-    async def decision_handler(message: str, choices: list[str]) -> str:
+    # Setup HITL decision handler - must push DECISION_REQUIRED to stream queue
+    async def decision_handler(
+        message: str,
+        choices: list[str],
+        *,
+        payload: dict | None = None,
+    ) -> str:
         """Handle HITL decision request."""
-        return await wait_for_decision(run_id, message, choices)
+        logger.info("[hitl] decision_handler run_id=%s choices=%s", run_id, choices)
+        event = {
+            "type": DECISION_REQUIRED.value,
+            "runId": run_id,
+            "message": message,
+            "choices": choices,
+        }
+        if payload:
+            event["payload"] = payload
+        try:
+            queue.put_nowait(event)
+        except Exception as e:
+            logger.warning("[streaming] failed to put DECISION_REQUIRED in queue: %s", e)
+        return await wait_for_decision(run_id, message, choices, payload=payload)
 
     # Start background task
     task = asyncio.create_task(_run_chat_task(
@@ -287,6 +307,12 @@ async def _run_chat_task(
                 db_path, session_id, "assistant", answer,
                 references=refs if refs else None,
             )
+            enqueue_segment_analysis(
+                db_path=db_path,
+                session_id=session_id,
+                user_message=req_message,
+                assistant_message=answer,
+            )
 
         # Emit text message
         queue.put_nowait({
@@ -320,6 +346,7 @@ async def _run_chat_task(
             "cache_hit": meta.get("cache_hit", False),
             "gen_ui": gen_ui,
             "cancelled": meta.get("cancelled", False),
+            "resumable": meta.get("resumable", False),
         }
         if refs:
             result_payload["references"] = refs

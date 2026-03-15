@@ -55,6 +55,7 @@ class MutableRunState:
         gen_ui_collected: Optional UI generation data from tools.
         answer_from_skill: Optional direct answer provided by a skill.
         cancelled: True if the run was cancelled by user request.
+        resumable: True when checkpoint was saved (streaming cancel); False for HITL cancel.
     """
 
     total_tokens: int = 0
@@ -63,3 +64,4 @@ class MutableRunState:
     gen_ui_collected: dict[str, Any] | None = None
     answer_from_skill: str | None = None
     cancelled: bool = False
+    resumable: bool = False

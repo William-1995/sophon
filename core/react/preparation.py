@@ -17,12 +17,12 @@ from config import get_config
 from constants import DB_FILENAME, FILE_INJECTION_MAX_LEN
 from core.agent_loop import parse_tool_calls
 from core.executor import execute_skill
-from core.file_lock import get_locks_for_filesystem_call, maybe_acquire_path_locks
 from core.skill_loader import get_skill_loader, get_skills_brief, get_skills_for_session
 from core.tool_builder import build_tools_from_skills
 from providers import BaseProvider
 
 from core.react.context import ImmutableRunContext, MutableRunState
+from core.react.utils import _COMPOSITE_BODY_INJECT_MAX
 
 logger = logging.getLogger(__name__)
 
@@ -267,12 +267,14 @@ async def inject_file_contents(
     file_contexts = []
     files_read = []
 
+    cfg = get_config()
+    fi = cfg.file_injection
     for match in matches:
         filename = match.group(1)
         try:
             result = await execute_skill(
-                skill_name="filesystem",
-                action="read",
+                skill_name=fi.skill,
+                action=fi.action,
                 arguments={"path": filename},
                 workspace_root=workspace_root,
                 session_id="file_injection",
