@@ -142,6 +142,11 @@ def _collect_items(
     return items
 
 
+def _sanitize(s: str) -> str:
+    """Replace surrogate/invalid chars so UTF-8 encode succeeds."""
+    return s.encode("utf-8", errors="replace").decode("utf-8")
+
+
 def _build_output_item(item: Path, workspace_root: Path) -> dict:
     """Build output dict for a file system item.
 
@@ -160,14 +165,14 @@ def _build_output_item(item: Path, workspace_root: Path) -> dict:
     if item.is_file():
         size = item.stat().st_size
         return {
-            "name": str(rel_path),
+            "name": _sanitize(str(rel_path)),
             "type": "file",
             "size": size,
             "size_display": _human_size(size),
         }
     else:
         return {
-            "name": str(rel_path),
+            "name": _sanitize(str(rel_path)),
             "type": "dir",
             "size": 0,
             "size_display": "-",
@@ -229,9 +234,9 @@ def main() -> None:
         else:
             directories.append(item_data)
 
-    # Prepare output
+    # Prepare output (sanitize path in case it has surrogates)
     output = {
-        "path": path or ".",
+        "path": _sanitize(path or "."),
         "summary": {
             "total_items": len(items),
             "files_count": len(files),
