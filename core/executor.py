@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -166,6 +167,17 @@ async def run_script(
         RuntimeError: If the script exits with non-zero return code.
     """
     project_root = Path(__file__).resolve().parent.parent
+    if sys.platform == "win32":
+        stdout_bytes, stderr_bytes, return_code = await asyncio.to_thread(
+            _run_script_subprocess_sync,
+            script_path,
+            params,
+            timeout,
+            project_root,
+            env,
+        )
+        return _ensure_script_success_sync(return_code, stdout_bytes, stderr_bytes)
+
     run_env, pipe_r, pipe_w = _prepare_run_env_for_script(project_root, env, event_sink)
     proc = await _create_skill_process(script_path, run_env, pipe_w)
     event_task = _start_event_drain_task(pipe_r, run_env, event_sink)
@@ -679,6 +691,38 @@ async def _drain_event_task(
             pass
 
 
+def _run_script_subprocess_sync(
+    script_path: Path,
+    params: dict[str, Any],
+    timeout: int,
+    project_root: Path,
+    env: dict[str, str] | None,
+) -> tuple[str, str, int]:
+    """Run script via subprocess.run. Windows fallback (asyncio subprocess raises NotImplementedError)."""
+    run_env = _build_run_env(project_root, env)
+    run_env["PYTHONIOENCODING"] = "utf-8"  # Force UTF-8 stdout/stderr (Windows default is CP936)
+    payload = json.dumps(params, ensure_ascii=False).encode("utf-8", errors="replace")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script_path.resolve())],
+            input=payload,
+            capture_output=True,
+            timeout=timeout,
+            env=run_env,
+            cwd=str(script_path.parent),
+        )
+        return result.stdout, result.stderr, result.returncode
+    except subprocess.TimeoutExpired:
+        raise TimeoutError(f"Skill timed out after {timeout}s")
+
+
+def _ensure_script_success_sync(return_code: int, stdout: bytes, stderr: bytes) -> str:
+    if return_code != 0:
+        err = stderr.decode("utf-8", errors="replace") or stdout.decode("utf-8", errors="replace")
+        raise RuntimeError(f"Skill failed (exit {return_code}): {err}")
+    return stdout.decode("utf-8", errors="replace")
+
+
 def _prepare_run_env_for_script(
     project_root: Path,
     env: dict[str, str] | None,
@@ -784,7 +828,7 @@ async def _write_script_stdin(proc: asyncio.subprocess.Process, params: dict[str
         proc: Subprocess with stdin pipe.
         params: JSON-serializable dict to send.
     """
-    payload = json.dumps(params, ensure_ascii=False).encode("utf-8")
+    payload = json.dumps(params, ensure_ascii=False).encode("utf-8", errors="replace")
     proc.stdin.write(payload)
     await proc.stdin.drain()
     proc.stdin.close()
