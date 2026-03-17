@@ -50,9 +50,13 @@ def list_workspace_files(q: str = "", recent_days: int = 7) -> dict:
     max_results = 200
     remaining_slots = max_results - len(recent_valid)
 
+    def _sanitize(s: str) -> str:
+        return s.encode("utf-8", errors="replace").decode("utf-8")
+
+    files_out = recent_valid + rest[:remaining_slots]
     return {
-        "files": recent_valid + rest[:remaining_slots],
-        "recent": recent_valid,
+        "files": [_sanitize(f) for f in files_out],
+        "recent": [_sanitize(f) for f in recent_valid],
     }
 
 
