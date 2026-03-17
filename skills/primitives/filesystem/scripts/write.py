@@ -42,7 +42,7 @@ def main() -> None:
 
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+        target.write_text(content, encoding="utf-8", errors="replace")
         print(json.dumps({"success": True, "path": path}))
     except Exception as e:
         print(json.dumps({"error": f"Write failed: {str(e)}"}))
