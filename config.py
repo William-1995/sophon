@@ -179,7 +179,9 @@ class SkillConfig:
         "search",
         "crawler",
         "filesystem",
-        "deep-recall",
+        "memory",
+        "pdf",
+        "word",
     )
     internal_skills: tuple[str, ...] = ("capabilities",)
     """Skills always available to the agent but NOT shown in frontend. E.g. capabilities (list what you can do)."""

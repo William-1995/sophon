@@ -10,7 +10,7 @@ metadata:
 
 ### calculate
 Convert natural language to date range. Returns since/until (ISO). Use for resolving relative dates before calling memory, log-analyze, etc.
-- expression (str): e.g. "today", "yesterday", "2 days", "7 days", "5h". "2 days" = day before yesterday; extract YYYY-MM-DD from since for memory.read(date=...)
+- expression (str): e.g. "today", "yesterday", "2 days", "7 days", "5h". "2 days" = day before yesterday; extract YYYY-MM-DD from since for memory.analyze(since, until)
 
 ### convert
 Convert timestamp between timezones.

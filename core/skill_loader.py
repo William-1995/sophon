@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 # agentskills.io: name = lowercase letters, numbers, hyphens only; 1-64 chars
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
+# Scan order: primitives -> features -> tools -> optional (align with v7)
+_TIER_SUBDIRS = ("primitives", "features", "tools", "optional")
+_TIER_MAP = {"primitives": "primitives", "features": "feature", "tools": "tools", "optional": "optional"}
+
 
 def _validate_dep_graph_acyclic(index: dict[str, dict[str, Any]]) -> None:
     """Raise if dependency graph contains a cycle. Index: skill_key -> entry with dependencies."""
@@ -147,7 +151,12 @@ class SkillLoader:
         self._cache: dict[str, dict[str, Any]] = {}
 
     def load_index(self) -> dict[str, dict[str, Any]]:
-        """Load all skills from primitives/ and features/. Result is cached."""
+        """Load all skills from primitives, features, tools, optional. Result is cached.
+
+        Scans:
+        - primitives/, features/, tools/: flat, each subdir with SKILL.md.
+        - optional/<channel>/*: recursive, tier=optional, channel=<channel>.
+        """
         root_key = str(self._root.resolve())
         if root_key in self._cache:
             return self._cache[root_key]
@@ -157,27 +166,47 @@ class SkillLoader:
         if not skills_dir.exists():
             skills_dir = self._root
 
-        for subdir in ("primitives", "features"):
+        for subdir in _TIER_SUBDIRS:
             subpath = skills_dir / subdir
             if not subpath.exists():
                 continue
-            for skill_dir in subpath.iterdir():
-                if not skill_dir.is_dir():
-                    continue
-                skill_md = skill_dir / "SKILL.md"
-                if not skill_md.exists():
-                    continue
-                entry = self._load_skill_entry(skill_dir, skill_md, subdir)
-                result[skill_dir.name] = entry
+
+            if subdir == "optional":
+                for channel_dir in subpath.iterdir():
+                    if not channel_dir.is_dir():
+                        continue
+                    channel = channel_dir.name
+                    for skill_dir in channel_dir.iterdir():
+                        if not skill_dir.is_dir():
+                            continue
+                        skill_md = skill_dir / "SKILL.md"
+                        if not skill_md.exists():
+                            continue
+                        entry = self._load_skill_entry(skill_dir, skill_md, subdir, channel=channel)
+                        result[skill_dir.name] = entry
+            else:
+                for skill_dir in subpath.iterdir():
+                    if not skill_dir.is_dir():
+                        continue
+                    skill_md = skill_dir / "SKILL.md"
+                    if not skill_md.exists():
+                        continue
+                    entry = self._load_skill_entry(skill_dir, skill_md, subdir)
+                    result[skill_dir.name] = entry
 
         _validate_dep_graph_acyclic(result)
         self._cache[root_key] = result
+        logger.info("skill_loader: scanned %d skills", len(result))
         return result
 
     def _load_skill_entry(
-        self, skill_dir: Path, skill_md: Path, subdir: str
+        self, skill_dir: Path, skill_md: Path, subdir: str, *, channel: str = ""
     ) -> dict[str, Any]:
-        """Parse a single SKILL.md into an index entry."""
+        """Parse a single SKILL.md into an index entry.
+
+        Args:
+            channel: Channel name for optional tier only (e.g. work, entertainment).
+        """
         content = skill_md.read_text(encoding="utf-8")
         fm = _parse_frontmatter(content)
         name = fm.get("name", skill_dir.name)
@@ -185,7 +214,8 @@ class SkillLoader:
         _validate_skill_format(skill_dir.name, name, description, skill_md)
 
         meta = fm.get("metadata") or {}
-        skill_type = meta.get("type", "primitive" if subdir == "primitives" else "feature")
+        _type_default = {"primitives": "primitive", "features": "feature", "tools": "tools", "optional": "feature"}
+        skill_type = meta.get("type", _type_default.get(subdir, "feature"))
         raw_deps = meta.get("dependencies", "")
         deps: list[str] = (
             [x.strip() for x in raw_deps.split(",") if x.strip()]
@@ -199,10 +229,14 @@ class SkillLoader:
             else (raw_mcp if isinstance(raw_mcp, list) else [])
         )
 
+        tier = _TIER_MAP.get(subdir, subdir)
+
         entry: dict[str, Any] = {
             "name": name,
             "description": description[:SKILL_DESCRIPTION_MAX_LEN],
             "type": skill_type,
+            "tier": tier,
+            "channel": channel,
             "dependencies": deps,
             "mcp": mcp_servers,
             "dir": str(skill_dir.absolute()),
@@ -243,6 +277,55 @@ class SkillLoader:
             for d in index.values()
             if d.get("name") in exposed_skills
         ]
+
+    def get_skills_brief_grouped(self) -> list[dict[str, Any]]:
+        """Return skills grouped by (tier, channel) for capabilities display.
+
+        Excludes internal skills. No whitelist filter.
+        """
+        index = self.load_index()
+        try:
+            from config import get_config
+            internal = set(get_config().skills.internal_skills)
+        except Exception:
+            internal = {"capabilities"}
+
+        groups: dict[tuple[str, str], list[dict[str, str]]] = {}
+        tier_order = ["primitives", "feature", "tools", "optional"]
+
+        for entry in index.values():
+            if entry.get("name") in internal:
+                continue
+            tier = entry.get("tier", "primitives")
+            channel = entry.get("channel", "")
+            key = (tier, channel)
+            if key not in groups:
+                groups[key] = []
+            groups[key].append({
+                "skill_name": entry["name"],
+                "skill_description": entry["description"],
+            })
+
+        result: list[dict[str, Any]] = []
+        seen_keys: set[tuple[str, str]] = set()
+        for tier in tier_order:
+            for key in sorted(groups.keys()):
+                if key[0] != tier or key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                result.append({
+                    "tier": key[0],
+                    "channel": key[1],
+                    "skills": groups[key],
+                })
+        for key in sorted(groups.keys()):
+            if key not in seen_keys:
+                result.append({
+                    "tier": key[0],
+                    "channel": key[1],
+                    "skills": groups[key],
+                })
+        return result
 
     def _normalize_skill_key(self, key: str, index: dict[str, Any]) -> str | None:
         """Resolve a skill name/key to the canonical index key.
@@ -373,6 +456,11 @@ def get_skill_loader(root: Path | None = None) -> SkillLoader:
 
 def get_skills_brief(root: Path | None = None) -> list[dict[str, str]]:
     return get_skill_loader(root).get_skills_brief()
+
+
+def get_skills_brief_grouped(root: Path | None = None) -> list[dict[str, Any]]:
+    """Return skills grouped by tier/channel for capabilities. See SkillLoader.get_skills_brief_grouped."""
+    return get_skill_loader(root).get_skills_brief_grouped()
 
 
 def get_skills_for_session(

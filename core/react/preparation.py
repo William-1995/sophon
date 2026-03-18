@@ -5,23 +5,22 @@ Handles skill selection, tool building, system prompt construction,
 and initial context preparation.
 """
 
-import json
 import logging
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from config import get_config
-from constants import DB_FILENAME, FILE_INJECTION_MAX_LEN
-from core.agent_loop import parse_tool_calls
+from constants import DB_FILENAME
 from core.executor import execute_skill
 from core.skill_loader import get_skill_loader, get_skills_brief, get_skills_for_session
 from core.tool_builder import build_tools_from_skills
 from providers import BaseProvider
 
 from core.react.context import ImmutableRunContext, MutableRunState
+from core.react.skill_selection import select_skills_for_question
+from core.react.system_prompt_builder import build_system_prompt
 from core.react.utils import _COMPOSITE_BODY_INJECT_MAX
 
 logger = logging.getLogger(__name__)
@@ -60,264 +59,27 @@ def build_hitl_tool() -> dict:
     }
 
 
-async def select_skills_for_question(
-    question: str,
-    provider: BaseProvider,
-    skills_brief: list[dict[str, str]],
-) -> list[str]:
-    """Round 1: lightweight LLM call to pick which skill(s) to load.
-
-    Args:
-        question: User question to analyze.
-        provider: LLM provider for selection inference.
-        skills_brief: List of available skills with names and descriptions.
-
-    Returns:
-        List of selected skill names. Empty list means no skills matched.
-    """
-    if not skills_brief:
-        return []
-    skill_list = "\n".join(
-        f"- {s['skill_name']}: {s['skill_description'][:180]}..." for s in skills_brief
-    )
-    sys_prompt = (
-        "Pick ALL skills needed to fully answer every part of the question. "
-        'Reply with JSON only: {"skills": ["skill_name1", "skill_name2"]}. '
-        "Use exact skill_name from the list. For compound questions, select multiple skills."
-    )
-    user_prompt = f"Question: {question}\n\nAvailable skills:\n{skill_list}\n\nWhich skill(s)? JSON only."
-    try:
-        resp = await provider.chat(
-            [{"role": "user", "content": user_prompt}],
-            tools=None,
-            system_prompt=sys_prompt,
-        )
-        content = (resp.get("content") or "").strip()
-        if "```" in content:
-            for part in content.split("```"):
-                if "skills" in part and "{" in part:
-                    content = part.replace("json", "").strip()
-                    break
-        data = _try_parse_json(content)
-        if data and isinstance(data.get("skills"), list):
-            valid = {s["skill_name"] for s in skills_brief}
-            selected = [x for x in data["skills"] if isinstance(x, str) and x in valid]
-            if selected:
-                logger.info("[react] selected_skills=%s", selected)
-                print(f"[react] selected_skills={selected}", file=sys.stderr, flush=True)
-                return selected
-    except Exception as e:
-        logger.warning("[react] _select_skills_for_question failed: %s", e)
-    logger.info("[react] selected_skills=[] (none matched)")
-    print("[react] selected_skills=[] (none matched)", file=sys.stderr, flush=True)
-    return []
-
-
-def _try_parse_json(content: str) -> dict | None:
-    """Try to parse JSON from content, with a fallback substring search.
-
-    Args:
-        content: Text that may contain JSON.
-
-    Returns:
-        Parsed dict or None if parsing fails.
-    """
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        pass
-    idx = content.find('"skills"')
-    if idx >= 0:
-        brace_start = content.rfind("{", 0, idx)
-        brace_end = content.find("}", idx)
-        if brace_start >= 0 and brace_end >= 0:
-            try:
-                return json.loads(content[brace_start : brace_end + 1])
-            except json.JSONDecodeError:
-                pass
-    return None
-
-
-def _build_user_response_context(question: str) -> dict:
-    """Infer user's language and format from the question for response guidance.
-
-    Args:
-        question: User's question text.
-
-    Returns:
-        Dict with response guidance parameters.
-    """
-    q = (question or "").strip()
-    has_cjk = bool(re.search(r"[\u4e00-\u9fff]", q))
-    detected_lang = "zh" if has_cjk else "en"
-    return {
-        "language": detected_lang,
-        "tone": "helpful and concise",
-        "format": "plain text only, no markdown code blocks unless explicitly requested",
-    }
-
-
-def _system_prompt_with_tools(
-    current_time: str,
-    composite: dict | None,
-    user_response_context: dict,
-) -> str:
-    """Build base system prompt when tools are available.
-
-    Args:
-        current_time: Current timestamp string.
-        composite: Optional composite skill definition.
-        user_response_context: User language/format preferences.
-
-    Returns:
-        System prompt string.
-    """
-    base = (
-        "You are Sophon, an AI assistant. Do not disclose base model information to users. "
-        "Reply in plain text only. Do not output JSON. "
-        "Do not proactively introduce or mention skills or capabilities; only answer about them when the user explicitly asks. "
-        f"Current time: {current_time}"
-    )
-    if composite:
-        body = composite.get("body", "")
-        if body:
-            trimmed = body[:_COMPOSITE_BODY_INJECT_MAX]
-            if len(body) > _COMPOSITE_BODY_INJECT_MAX:
-                trimmed += "\n...[truncated]"
-            base += f"\n\nSkill guidance:\n{trimmed}"
-    return f"{base}\n\nResponse context (follow strictly): {json.dumps(user_response_context)}"
-
-
-def _system_prompt_without_tools(
-    current_time: str,
-    user_response_context: dict,
-) -> str:
-    """Build base system prompt when no tools are available.
-
-    Args:
-        current_time: Current timestamp string.
-        user_response_context: User language/format preferences.
-
-    Returns:
-        System prompt string.
-    """
-    ctx_block = f"\n\nResponse context (follow strictly): {json.dumps(user_response_context)}"
-    return (
-        "You are Sophon, an AI assistant. Do not disclose base model information to users. "
-        "Reply in plain text only. Do not output JSON. "
-        "Do not proactively introduce or mention skills or capabilities; only answer about them when the user explicitly asks. "
-        f"Current time: {current_time}"
-        f"{ctx_block}"
-    )
-
-
-def build_system_prompt(
-    tools: list,
-    skills_brief: list[dict[str, str]],
-    composite: dict | None,
-    current_time: str,
-    override: str | None,
-    question: str,
-) -> str:
-    """Build system prompt for the ReAct loop.
-
-    Injects user_response_context object so LLM replies in the user's language.
-
-    Args:
-        tools: List of available tools.
-        skills_brief: List of skill briefs for context.
-        composite: Optional composite skill definition.
-        current_time: Current timestamp.
-        override: Optional system prompt override.
-        question: User question for language detection.
-
-    Returns:
-        Complete system prompt string.
-    """
-    user_response_context = _build_user_response_context(question)
-    default = (
-        _system_prompt_with_tools(current_time, composite, user_response_context)
-        if tools
-        else _system_prompt_without_tools(current_time, user_response_context)
-    )
-    return f"{override.strip()}\n\n{default}" if (override and override.strip()) else default
-
-
 async def inject_file_contents(
     question: str,
     workspace_root: Path,
     db_path: Path | None,
 ) -> tuple[str, list[dict]]:
-    """Detect @filename in question and auto-read file contents.
+    """Detect @filename in question. No content injection—path stays in question.
 
-    Args:
-        question: User question that may contain @filename references.
-        workspace_root: Root path for resolving relative paths.
-        db_path: Optional database path for skill execution.
-
-    Returns:
-        Tuple of (modified_question, file_context_messages).
+    Main agent selects the right skill (pdf, word, filesystem) and passes path
+    in tool arguments. The skill receives workspace_root + path and reads the file.
     """
     file_pattern = r'@([^\s]+)'
     matches = list(re.finditer(file_pattern, question))
-
     if not matches:
         return question, []
 
-    file_contexts = []
-    files_read = []
-
-    cfg = get_config()
-    fi = cfg.file_injection
+    modified_question = question
     for match in matches:
         filename = match.group(1)
-        try:
-            result = await execute_skill(
-                skill_name=fi.skill,
-                action=fi.action,
-                arguments={"path": filename},
-                workspace_root=workspace_root,
-                session_id="file_injection",
-                user_id="system",
-                db_path=db_path if db_path and db_path.exists() else None,
-            )
-
-            if result.get("error"):
-                continue
-
-            content = result.get("content", "")
-            if not content:
-                continue
-
-            max_len = FILE_INJECTION_MAX_LEN
-            truncated = len(content) > max_len
-            display_content = content[:max_len] + ("\n... (truncated)" if truncated else "")
-
-            file_contexts.append({
-                "filename": filename,
-                "content": display_content,
-            })
-            files_read.append(filename)
-
-        except Exception as e:
-            logger.debug("Failed to auto-read @file %s: %s", filename, e)
-            continue
-
-    if not file_contexts:
-        return question, []
-
-    context_messages = []
-    for fc in file_contexts:
-        context_messages.append({
-            "role": "system",
-            "content": f"File '{fc['filename']}' content:\n```\n{fc['content']}\n```",
-        })
-
-    modified_question = question
-    for filename in files_read:
         modified_question = modified_question.replace(f"@{filename}", filename)
 
-    return modified_question, context_messages
+    return modified_question, []
 
 
 def build_initial_messages(
@@ -349,6 +111,29 @@ def build_initial_messages(
 
     messages.append({"role": "user", "content": question})
     return messages
+
+
+async def _build_react_tools_and_skills(
+    question: str,
+    provider: BaseProvider,
+    skill_filter: str | None,
+    decision_waiter: Any,
+    run_id: str | None,
+) -> tuple[list, list[dict], Any]:
+    """Resolve skills and build tools. Returns (tools, skills_brief, loader)."""
+    skills_brief = get_skills_brief()
+    selected, skills_for_session = await _resolve_react_skills(
+        question, provider, skill_filter, skills_brief
+    )
+    _log_react_skills_selected(selected, skills_for_session, skill_filter)
+    loader = get_skill_loader()
+    all_skills = _build_all_skills_for_react(skills_for_session, loader)
+    actions_filter = _build_react_actions_filter(all_skills, loader)
+    tools = _build_react_tools(
+        all_skills, loader, actions_filter, decision_waiter, run_id
+    )
+    _log_react_tools(tools)
+    return tools, skills_brief, loader
 
 
 async def prepare_react_run(
@@ -393,19 +178,9 @@ async def prepare_react_run(
     if file_context:
         logger.info("Auto-injected %d file(s) from @references", len(file_context))
 
-    skills_brief = get_skills_brief()
-    selected, skills_for_session = await _resolve_react_skills(
-        question, provider, skill_filter, skills_brief
+    tools, skills_brief, loader = await _build_react_tools_and_skills(
+        question, provider, skill_filter, decision_waiter, run_id
     )
-    _log_react_skills_selected(selected, skills_for_session, skill_filter)
-
-    loader = get_skill_loader()
-    all_skills = _build_all_skills_for_react(skills_for_session, loader)
-    actions_filter = _build_react_actions_filter(all_skills, loader)
-    tools = _build_react_tools(
-        all_skills, loader, actions_filter, decision_waiter, run_id
-    )
-    _log_react_tools(tools)
 
     if db.exists():
         log_insert(db, "INFO", f"react_start question={modified_question}", session_id)
@@ -413,8 +188,12 @@ async def prepare_react_run(
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     composite = loader.get_skill(skill_filter) if skill_filter else None
     system = build_system_prompt(
-        tools, skills_brief, composite, current_time,
-        system_prompt_override, modified_question,
+        tools,
+        composite,
+        current_time,
+        system_prompt_override,
+        modified_question,
+        composite_body_max=_COMPOSITE_BODY_INJECT_MAX,
     )
     referent_rounds = get_config().memory.referent_context_rounds
     messages = build_initial_messages(
@@ -424,7 +203,6 @@ async def prepare_react_run(
     start_round, modified_question = _apply_resume_checkpoint(
         resume_checkpoint, messages, state, modified_question
     )
-
     ctx = ImmutableRunContext(
         db=db,
         modified_question=modified_question,
@@ -468,15 +246,13 @@ def _log_react_skills_selected(
     skills_for_session: list[dict],
     skill_filter: str | None,
 ) -> None:
-    """Log and stderr-print selected skills and skills_for_session."""
-    import sys
+    """Log selected skills and skills_for_session."""
     exposed = list(get_config().skills.exposed_skills) if get_config().skills.exposed_skills else []
-    print(f"[react] skill_filter={skill_filter} exposed_skills={exposed}", flush=True)
+    logger.debug("[react] skill_filter=%s exposed_skills=%s", skill_filter, exposed)
     if skill_filter:
-        print(f"[react] skill_filter={skill_filter} (skip round1 select)", flush=True)
+        logger.debug("[react] skill_filter=%s (skip round1 select)", skill_filter)
     sf = [s.get("skill_name", s.get("name", "")) for s in skills_for_session]
     logger.info("[react] selected_skills=%s skills_for_session=%s", selected, sf)
-    print(f"[react] selected_skills={selected} skills_for_session={sf}", flush=True)
 
 
 def _build_all_skills_for_react(
@@ -530,11 +306,9 @@ def _build_react_tools(
 
 
 def _log_react_tools(tools: list) -> None:
-    """Log and stderr-print tool count and names."""
-    import sys
+    """Log tool count and names."""
     tool_names = [t.get("function", {}).get("name") for t in tools]
-    logger.info("[react] tools_count=%d tool_names=%s", len(tools), tool_names)
-    print(f"[react] tools_count={len(tools)} tool_names={tool_names}", flush=True)
+    logger.debug("[react] tools_count=%d tool_names=%s", len(tools), tool_names)
 
 
 def _apply_resume_checkpoint(

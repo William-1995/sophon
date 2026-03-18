@@ -28,7 +28,6 @@ const SKILL_LABELS: Record<string, string> = {
   'crawler': 'Fetching and reading the webpage',
   'filesystem': 'Reading or writing files',
   'troubleshoot': 'Analyzing logs and traces to diagnose the issue',
-  'deep-recall': 'Searching through conversation history',
   'memory': 'Looking up past conversations',
   'capabilities': 'Listing available capabilities',
   'excel': 'Processing the workbook',

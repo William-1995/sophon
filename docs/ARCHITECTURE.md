@@ -20,25 +20,26 @@ React Frontend ←──→ FastAPI ←──→ ReAct Orchestrator ←──→
 | `api/` | FastAPI web server, REST endpoints, streaming |
 | `db/` | SQLite database layer |
 | `providers/` | LLM provider abstractions |
-| `skills/primitives/` | Single-purpose tools |
-| `skills/features/` | Multi-step orchestrators (sub-agents) |
+| `skills/primitives/` | Core building blocks (filesystem, memory, time) |
+| `skills/tools/` | pdf, word, excel, fetch, search, crawler, log-analyze, trace, metrics |
+| `skills/optional/work/` | Work sub-agents (deep-research, troubleshoot, excel-ops) |
+| `skills/optional/entertainment/` | Entertainment features (emotion-awareness) |
 | `frontend/` | React + TypeScript UI |
 | `speech/` | Local speech-to-text |
 | `mcp_integration/` | Model Context Protocol support |
 
 ## Skill System
 
-### Two-Tier Architecture
+### Four-Tier Architecture (v7-aligned)
 
-**Primitives** (`skills/primitives/`)
-- Single-purpose, focused tools
-- Examples: search, crawler, filesystem, time, log-analyze, trace, metrics
-- Run as isolated subprocesses
+| Tier | Path | Description |
+|------|------|-------------|
+| **Primitives** | `skills/primitives/` | Core building blocks: filesystem, memory, time. Run as isolated subprocesses. |
+| **Tools** | `skills/tools/` | pdf, word, excel, fetch, search, crawler, log-analyze, trace, metrics. |
+| **Optional/Work** | `skills/optional/work/` | Sub-agents with own ReAct loops: deep-research, troubleshoot, excel-ops. |
+| **Optional/Entertainment** | `skills/optional/entertainment/` | e.g. emotion-awareness. |
 
-**Features** (`skills/features/`)
-- Complex capabilities with their own ReAct loops
-- Examples: deep-research, troubleshoot, excel-ops
-- Act as sub-agents, calling primitives as tools
+**Scan order**: `primitives` → `features` → `tools` → `optional` (optional uses `optional/<channel>/*`).
 
 ### Skill Composition
 
@@ -57,13 +58,13 @@ This allows your skill to invoke `search`, `crawler`, and even `deep-research` a
 
 **Nested Orchestration**
 
-Feature skills can call other feature skills:
+Optional/Work skills can call other skills:
 ```
 Main Agent
-└── Feature Skill A (depends on Feature Skill B)
-    └── Feature Skill B (depends on Primitives)
-        ├── Primitive: search
-        └── Primitive: crawler
+└── excel-ops (depends on excel, search, crawler)
+    ├── excel.read / excel.structure
+    ├── search.search
+    └── crawler.scrape
 ```
 
 **DAG Validation**
@@ -77,9 +78,9 @@ Sophon validates the skill dependency graph at load time:
 
 | Use Case | Composition |
 |----------|-------------|
-| **Research + Analysis** | `deep-research` → `troubleshoot` for analyzing research findings |
-| **Multi-source aggregation** | `search` + `crawler` + `filesystem` for comprehensive data collection |
-| **Workflow automation** | Chain `excel-ops` → `filesystem` → `email` for report generation |
+| **Research + Analysis** | `deep-research` → `search`, `crawler`, `filesystem`, `memory` |
+| **Document Q&A** | `pdf.structure` → `pdf.parse` with page_range; `word.parse` → `word.to_markdown` |
+| **Workflow automation** | `excel-ops` → `excel`, `search`, `crawler`; output to `filesystem` |
 
 **Benefits**
 
@@ -166,12 +167,9 @@ Sophon supports two HITL modes:
 
 **Resumable**: Only when a checkpoint was saved (streaming cancel). HITL cancel does not save a checkpoint; `resumable=false` → frontend does not show Resume button.
 
-### @file Injection
+### @file Reference
 
-Questions can reference files with `@filename`. The preparation layer (`inject_file_contents` in `preparation.py`) auto-reads file contents via a configurable skill/action:
-
-- **Config**: `FileInjectionConfig` in `config.py` — `skill` (default `filesystem`), `action` (default `read`).
-- **Flow**: Regex `@([^\s]+)` finds references → calls `execute_skill(skill, action, {path})` → injects content into context messages, replaces `@filename` in question with plain filename.
+Questions can reference files with `@filename`. The preparation layer (`inject_file_contents` in `preparation.py`) replaces `@filename` with the filename in the question—no content injection. The main agent selects the appropriate skill (pdf, word, filesystem) based on the file reference and passes the path in tool arguments. Each skill receives `workspace_root` + `path` and reads the file itself.
 
 ## Database Layer
 
@@ -261,11 +259,11 @@ Unlike traditional agent systems that treat "memory" as a separate concept, Soph
 - **Long-term context**: Persisted session histories, skill outputs, references
 - **Cross-session context**: Relationships between parent and child sessions
 
-The `deep-recall` skill navigates this context spectrum using ideas inspired by [RLM (Recursive Language Model)](https://github.com/ysz/recursive-llm), but adapted for Sophon's context-centric philosophy.
+The `memory` skill navigates this context spectrum using ideas inspired by [RLM (Recursive Language Model)](https://github.com/ysz/recursive-llm), but adapted for Sophon's context-centric philosophy.
 
-### How Deep-Recall Works
+### How Memory Works
 
-Instead of "remembering" facts, deep-recall **recursively explores the context space**:
+Instead of "remembering" facts, memory **recursively explores the context space**:
 
 1. **Query Analysis**: Understand what context is needed
 2. **Recursive Exploration**: Search across short-term and long-term context layers

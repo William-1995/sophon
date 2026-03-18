@@ -10,10 +10,11 @@ This guide is written for developers working in an AI-assisted IDE (Cursor, GitH
 
 | Type | Location | Purpose |
 |------|----------|---------|
-| `primitive` | `skills/primitives/<name>/` | Single-purpose tool: one concern, clean input/output |
-| `feature` | `skills/features/<name>/` | Orchestrates primitives to solve a higher-level user need |
+| `primitive` | `skills/primitives/<name>/` | Core building block: one concern, clean input/output |
+| `tool` | `skills/tools/<name>/` | Specialized tool: search, crawler, log-analyze, trace, metrics |
+| `optional` | `skills/optional/<channel>/<name>/` | Sub-agent; channel = work, entertainment, etc. |
 
-Start with a primitive. Build a feature only when you need to coordinate multiple primitives or run a multi-step pipeline.
+Start with a primitive. Use `tools/` for specialized capabilities. Use `optional/work/` when you need a sub-agent that orchestrates other skills.
 
 ---
 
@@ -83,7 +84,7 @@ What this action does.
 | `name` | Yes | Kebab-case, matches directory name, 64 chars max |
 | `description` | Yes | Plain text, 200 chars max; used in LLM tool descriptions |
 | `metadata.type` | Recommended | `primitive` or `feature` |
-| `metadata.dependencies` | Feature only | Comma-separated names of required primitives |
+| `metadata.dependencies` | Optional/tools | Comma-separated names of required skills (e.g. excel, search, crawler) |
 | `license` | Recommended | e.g. `MIT` |
 | `compatibility` | Recommended | e.g. `sophon>=1` |
 
@@ -288,7 +289,7 @@ echo '{
   "workspace_root": "/tmp/sophon-test",
   "user_id": "dev",
   "_executor_session_id": "test-session"
-}' | python skills/features/my-feature/scripts/run.py
+}' | python skills/optional/work/my-feature/scripts/run.py
 ```
 
 Expected output: a single JSON object on stdout, nothing else.

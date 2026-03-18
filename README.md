@@ -31,33 +31,38 @@ Unlike systems that let AI improvise and execute arbitrary code, Sophon operates
 
 ### Skills as Tools. Skills as Sub-agents.
 
-Sophon has a **two-tier skill architecture** that scales from simple tools to complex multi-step workflows:
+Sophon uses a **four-tier skill architecture** (aligned with agentskills.io):
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Main Agent (Orchestrator)                          │
-│  Analyzes question → Selects skills → Synthesizes   │
-└──────────────┬──────────────────────────────────────┘
-               │
-    ┌──────────┴──────────┐
-    │                     │
-┌───▼────┐          ┌────▼─────┐
-│ Primitives      │  │ Features         │
-│                 │  │                  │
-│ • search        │  │ • deep-research  │
-│ • crawler       │  │ • troubleshoot   │
-│ • filesystem    │  │ • excel-ops      │
-│ • time          │  │                  │
-│ • log-analyze   │  │ [Sub-agents with  │
-│ • trace         │  │  their own ReAct  │
-│ • metrics       │  │  loops]           │
-└─────────────────┘  └──────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│  Main Agent (Orchestrator)                                              │
+│  Analyzes question → Selects skills → Synthesizes                       │
+└──────────────────────┬─────────────────────────────────────────────────┘
+                       │
+    ┌──────────────────┼──────────────────┬──────────────────────┐
+    │                  │                  │                       │
+┌───▼────────┐   ┌─────▼─────┐   ┌────────▼────────┐   ┌──────────▼──────────┐
+│ Primitives │   │  Tools    │   │  Optional/Work   │   │ Optional/Entertain  │
+│            │   │           │   │                  │   │                    │
+│ • filesystem│   │ • pdf     │   │ • deep-research  │   │ • emotion-awareness│
+│ • memory   │   │ • word    │   │ • troubleshoot   │   │                    │
+│ • time     │   │ • excel   │   │ • excel-ops      │   │                    │
+│            │   │ • fetch   │   │ [Sub-agents]     │   │                    │
+│            │   │ • search  │   │                  │   │                    │
+│            │   │ • crawler │   │                  │   │                    │
+│            │   │ • metrics │   │                  │   │                    │
+│            │   │ • trace   │   │                  │   │                    │
+└────────────┘   └───────────┘   └──────────────────┘   └────────────────────┘
 ```
 
-- **Primitives**: Single-purpose tools (search, crawl, file I/O). They do one thing well.
-- **Features**: Complex capabilities that ARE sub-agents. Each feature runs its own lightweight ReAct loop, calling primitives as tools.
+| Tier | Path | Description |
+|------|------|-------------|
+| **Primitives** | `skills/primitives/` | Core building blocks: filesystem, time, memory |
+| **Tools** | `skills/tools/` | pdf, word, excel, fetch, search, crawler, metrics, trace, log-analyze |
+| **Optional/Work** | `skills/optional/work/` | Complex sub-agents: deep-research, troubleshoot, excel-ops |
+| **Optional/Entertain** | `skills/optional/entertainment/` | Emotion-awareness and similar |
 
-**Example**: `deep-research` is not a tool—it's a sub-agent that plans, dispatches parallel searches, filters results, fetches pages, and synthesizes findings. The main agent just decides *when to invoke it*.
+**Example**: `deep-research` is a sub-agent that plans, dispatches parallel searches, filters results, fetches pages, and synthesizes. The main agent decides *when to invoke it*.
 
 ---
 
@@ -82,11 +87,13 @@ All data stays on your machine in SQLite. No cloud dependencies, no external vec
 
 ## Quick Start
 
+For first-time setup, see [Environment Setup](docs/SETUP.md).
+
 ```bash
 # 1. Clone & setup
 git clone https://github.com/William-1995/sophon.git
 cd sophon
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
 
 # 2. Configure (choose your provider)
 # Configuration files:
@@ -152,8 +159,11 @@ Engineers can build sophisticated capabilities by composing existing skills:
 - **Session tree**: Visualize parent-child session relationships
 - **Checkpoint recovery**: Resume interrupted tasks from last checkpoint
 
-**File Processing**
-Built-in support for complex document operations including Excel manipulations, with PDF and more formats coming soon.
+**Document Processing**
+Built-in support for PDF, Word, and Excel:
+- **PDF**: structure (TOC), parse (page_range/offset+limit), to_markdown, to_txt
+- **Word**: parse (paragraphs, tables), to_markdown, to_txt
+- **Excel**: read/write with limit/offset, structure, list_sheets
 
 **Visibility & Observability**
 Sophon treats visibility as a first-class citizen:
@@ -178,32 +188,54 @@ Built-in voice input using faster-whisper (local, no cloud):
 
 ## Built-in Skills
 
-**Primitives**
+**Primitives** (`skills/primitives/`)
+| Skill | Description |
+|-------|-------------|
+| `capabilities` | List available skills and capabilities |
+| `excel` | Read/write Excel/CSV; structure, list_sheets; limit/offset |
+| `fetch` | HTTP GET; returns text or base64 for PDF/Word parsing |
+| `filesystem` | Read, write, list, delete workspace files. Delete supports HITL confirmation. |
+| `memory` | Search/read session memory; short-term + long-term |
+| `pdf` | Parse PDF; structure (TOC); to_markdown, to_txt; page_range/offset+limit |
+| `time` | Timezone conversion, date formatting |
+| `word` | Parse Word (.docx); to_markdown, to_txt |
+| `memory` | History exploration — search, analyze by time, explore sessions |
+
+**Tools** (`skills/tools/`)
 | Skill | Description |
 |-------|-------------|
 | `search` | Web search via DuckDuckGo |
-| `crawler` | Scrape & extract content with Playwright |
-| `filesystem` | Read, write, list workspace files. Delete supports two-phase confirmation (HITL). |
-| `time` | Timezone conversion, date formatting |
-| `deep-recall` | Context exploration powered by RLM-inspired recursive search — intelligently navigates short-term (cached) and long-term (persistent) context across sessions |
+| `crawler` | Scrape & extract with Playwright |
 | `log-analyze` | Query and analyze application logs |
 | `trace` | Distributed trace analysis |
 | `metrics` | Time-series metrics query |
-| `diagnostics` | Self-diagnosis and troubleshooting |
 
-**Features (Sub-agents)**
+**Optional/Work** (`skills/optional/work/`) — Sub-agents
 | Skill | Description |
 |-------|-------------|
-| `deep-research` | Multi-step research with planning, parallel execution, synthesis |
-| `troubleshoot` | Root-cause analysis across observability data |
-| `excel-ops` | Advanced Excel operations |
+| `deep-research` | Multi-phase research: plan → parallel fetch → synthesis |
+| `troubleshoot` | Root-cause analysis across logs, traces, metrics |
+| `excel-ops` | Fill workbook columns from web/search with LLM extraction |
+
+**Optional/Entertainment** (`skills/optional/entertainment/`)
+| Skill | Description |
+|-------|-------------|
+| `emotion-awareness` | Emotion segment analysis from conversation |
 
 ---
 
 ## Create Your Own Skill
 
 ```bash
+# Primitives: single-purpose tools
 mkdir -p skills/primitives/my-skill
+
+# Or tools: specialized capabilities
+# mkdir -p skills/tools/my-tool
+
+# Or optional: grouped by channel (work, entertainment)
+# mkdir -p skills/optional/work/my-feature
+
 cat > skills/primitives/my-skill/SKILL.md << 'EOF'
 ---
 name: my-skill
@@ -272,7 +304,6 @@ If you accidentally configure multiple providers, Sophon will prioritize: DeepSe
 ## Coming Soon
 
 - **Agent marketplace** - Share and discover community skills
-- **Enhanced file processing** - Advanced Excel, PDF, and document handling capabilities
 - **Desktop application** - Native desktop app for seamless OS-level integration
 
 ---
@@ -289,8 +320,8 @@ We welcome contributions of all kinds! Skills are a great starting point—they 
 
 **Areas where help is especially appreciated:**
 - **New skills**: `weather`, `calculator`, `github`, `database`, `calendar`, `email`
-- **LLM providers**: OpenAI, Claude, Gemini, local model support
-- **File formats**: PDF, Word, image processing capabilities
+- **LLM providers**: OpenAI, Claude, Gemini
+- **Image/OCR**: Image understanding, PDF OCR for scanned documents
 - **Testing & bug reports**: Real-world usage feedback
 - **Documentation**: Tutorials, examples, translations
 

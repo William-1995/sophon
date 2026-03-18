@@ -1,6 +1,6 @@
 ---
 name: memory
-description: Retrieve past conversations. Use for prior dialogue, past questions, or history lookup.
+description: Memory recall and history exploration. Use for any question about past conversations, previous topics, what the user asked before, or recent activity.
 metadata:
   type: primitive
   dependencies: "time"
@@ -8,32 +8,75 @@ metadata:
 
 ## Orchestration Guidance
 
-**Short-term first, long-term second**: For recall ("what did we discuss about X"), prefer recent context. memory.search automatically queries current session first, then expands to cross-session. memory.read defaults to current session when date and session_id omitted.
+**RULE: time expressions ("last week", "yesterday", "past week", "recent") → call `time.calculate` first, then `memory.analyze`. NEVER call `search` for time-based queries.**
 
-Use search for keyword lookup; use read for a specific date or session. Omit session_id to use current session (short-term).
+**NEVER** tell the user you cannot access history without first calling a `memory` action.
 
-**Resolving referents**: When the user refers to "my question", "what I asked", "the previous message", "that content", etc. without stating it explicitly, prioritize the most recent rounds of dialogue (default 3 rounds; configurable via referent_context_rounds). Only the most recent N rounds are passed to you, so use them first. Call memory.read (omit session_id for current session) if you need more. If you cannot determine the referent confidently, ask the user to clarify before acting.
+Use `memory` whenever the user asks about past conversations, previous topics, or recent activity.
 
-For relative dates (yesterday, 2 days ago, day before yesterday): call time.calculate first. Use its since/until (extract YYYY-MM-DD) as memory.search(date_range={"start": since_date, "end": until_date}) or memory.read(date=since_date).
+### Decision tree:
+
+- **Time-based** ("last week", "yesterday", "recent", "past N days", "past week"):
+  1. `time.calculate` → get `since`/`until` timestamps
+  2. `memory.analyze(since, until)` → retrieve messages
+  3. Summarize
+
+- **Topic-based** (specific keyword or technology name):
+  1. `memory.search(keyword)` — `keyword` is REQUIRED
+  2. Summarize
+
+- **Session-specific** (has session ID):
+  1. `memory.detail(session_id)`
+
+- **Open-ended / unsure**:
+  1. `memory.explore` → then pick time-based or topic-based
 
 ## Tools
 
+### explore
+RLM-style exploration. Loads session metadata and returns available tool descriptions. Use when the user asks an open-ended memory question and you need to orient first.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| query | string | Yes | Natural language question about memory |
+| session_hint | string | No | Optional session ID to start from |
+| max_depth | int | No | Maximum recursion depth (default: 3) |
+
+Returns: session list, total message count, available tools.
+
 ### search
-Search memory by keywords. Short-term (current session) first, then long-term (cross-session).
-- query (str, optional): Search keywords. Omit for date-only filter.
-- session_id (str, optional): Prefer this session (short-term). Omit to use current session first.
-- date_range (object, optional): {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}. Also accepts [start, end] from time.calculate.
-- top_k / limit (int, optional): Number of results. Default from config (memory_search_default_limit, typically 200). LLM can override for sliding-window or narrow scope.
+Keyword search across all conversation history. Fast path for topic-based recall.
 
-### read
-Read complete memory. Defaults to current session (short-term) when date and session_id omitted.
-- date (str, optional): YYYY-MM-DD, today, yesterday
-- session_id (str, optional): Omit to use current session
-- limit (int, optional): Max results, default 50
-- order (str, optional): "asc" (oldest first, default for full conversation) or "desc"/"newest" (newest first)
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| keyword | string | Yes | Keyword or phrase to search |
+| limit | int | No | Max results (default: return all matches) |
 
-### summarize
-Summarize memory over a period.
-- since (str, required): Start date YYYY-MM-DD
-- until (str, required): End date YYYY-MM-DD
-- focus (str, optional): Focus topic to filter
+Returns: matching messages with session ID, role, content, and timestamp.
+
+### detail
+Retrieve the complete message history for a specific session.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| session_id | string | Yes | Session ID to retrieve |
+
+Returns: All messages in the session, ordered by time.
+
+### analyze
+Retrieve and aggregate all messages within a time range. Use this for "summarize last week" or "what happened on Monday" type questions.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| since | string | Yes | Start date: YYYY-MM-DD or Unix timestamp |
+| until | string | Yes | End date: YYYY-MM-DD or Unix timestamp |
+
+Returns: All messages in the range with session ID, role, content, and timestamp.
+
+## Output Contract
+
+| Field | Type | Description |
+|-------|------|-------------|
+| results / messages | array | List of matched messages or session messages |
+| count | integer | Number of items returned |
+| error | string | Present only on failure |

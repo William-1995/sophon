@@ -1,13 +1,26 @@
-# Sophon - Minimal dependencies
+# Sophon - Dependencies for all skills (开箱即用)
+# Core API
 httpx>=0.27.0
-faster-whisper>=1.0.0
 fastapi>=0.115.0
 uvicorn>=0.32.0
 jsonschema>=4.0.0
 ag-ui-protocol>=0.1.13
-ddgs>=9.0.0
-mcp>=1.0.0
-playwright>=1.40.0
-trafilatura>=2.0.0
-openpyxl>=3.1.0
 msgpack>=1.0.0  # optional: SOPHON_IPC_FORMAT=msgpack for efficient event IPC
+
+# Primitive skills
+pypdf>=4.0.0           # pdf: parse, structure, to_txt, to_markdown
+python-docx>=1.0.0    # word: parse, to_txt, to_markdown (.docx)
+openpyxl>=3.1.0       # excel: read, write, structure, list_sheets, to_csv (.xlsx)
+xlrd>=2.0.0           # excel: .xls support (optional but included)
+
+# Tools
+ddgs>=9.0.0            # search: DuckDuckGo
+playwright>=1.40.0     # crawler: scrape (run: playwright install chromium)
+trafilatura>=2.0.0     # crawler: content extraction
+
+# Optional skills (deep-research)
+beautifulsoup4>=4.12.0 # deep-research: HTML extraction
+
+# Speech (optional, can be disabled)
+faster-whisper>=1.0.0  # speech-to-text
+mcp>=1.0.0
