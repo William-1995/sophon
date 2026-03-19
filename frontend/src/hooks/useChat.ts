@@ -28,6 +28,12 @@ export interface LiveEvent {
   [key: string]: unknown
 }
 
+export interface LiveTodo {
+  id: string
+  title: string
+  status: 'pending' | 'in_progress' | 'done'
+}
+
 interface UseChatResult {
   input: string
   setInput: React.Dispatch<React.SetStateAction<string>>
@@ -37,6 +43,7 @@ interface UseChatResult {
   liveTokens: number | null
   runId: string | null
   liveEvents: LiveEvent[]
+  liveTodos: LiveTodo[]
   decisionRequired: DecisionRequired | null
   submitDecision: (choice: string) => Promise<void>
   sendMode: SendMode
@@ -66,6 +73,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
   const [liveTokens, setLiveTokens] = useState<number | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([])
+  const [liveTodos, setLiveTodos] = useState<LiveTodo[]>([])
   const [decisionRequired, setDecisionRequired] = useState<DecisionRequired | null>(null)
   const [sendMode, setSendMode] = useState<SendMode>('async')
   const [lastCancelledRunId, setLastCancelledRunId] = useState<string | null>(null)
@@ -100,6 +108,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
     setLiveTokens(0)
     setRunId(null)
     setLiveEvents([])
+    setLiveTodos([])
     setDecisionRequired(null)
     try {
       const result = await chatApi.sendStream(
@@ -111,6 +120,11 @@ export function useChat(options: UseChatOptions): UseChatResult {
           if (data.type === 'CUSTOM' && data.name === 'sophon_event' && data.value) {
             const evt = data.value as LiveEvent
             setLiveEvents((prev) => [...prev.slice(-49), evt])
+            if (evt.type === 'TODOS_PLAN' && Array.isArray(evt.items)) {
+              setLiveTodos(evt.items as LiveTodo[])
+            } else if (evt.type === 'TODOS_UPDATED' && Array.isArray(evt.items)) {
+              setLiveTodos(evt.items as LiveTodo[])
+            }
           }
         },
         (id) => {
@@ -212,6 +226,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
       setLoading(true)
       setRunId(null)
       setLiveEvents([])
+      setLiveTodos([])
       setDecisionRequired(null)
       setLastCancelledRunId(null)
 
@@ -225,6 +240,11 @@ export function useChat(options: UseChatOptions): UseChatResult {
             if (data.type === 'CUSTOM' && data.name === 'sophon_event' && data.value) {
               const evt = data.value as LiveEvent
               setLiveEvents((prev) => [...prev.slice(-49), evt])
+              if (evt.type === 'TODOS_PLAN' && Array.isArray(evt.items)) {
+                setLiveTodos(evt.items as LiveTodo[])
+              } else if (evt.type === 'TODOS_UPDATED' && Array.isArray(evt.items)) {
+                setLiveTodos(evt.items as LiveTodo[])
+              }
             }
           },
           (id) => {
@@ -298,6 +318,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
     liveTokens,
     runId,
     liveEvents,
+    liveTodos,
     decisionRequired,
     submitDecision,
     sendMode,

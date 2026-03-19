@@ -94,6 +94,23 @@ async def run_react(
         decision_waiter=decision_waiter,
     )
     if state.cancelled:
+        if state.total_tokens > 0 and ctx.db.exists():
+            from db.logs import insert as log_insert
+            from db.metrics import insert as metrics_insert
+            rid = ctx.run_id or ""
+            log_insert(
+                ctx.db,
+                "INFO",
+                f"tokens step=run_total(cancelled) tokens={state.total_tokens}",
+                ctx.session_id,
+                {"step": "run_total", "tokens": state.total_tokens, "cancelled": True, "run_id": rid},
+            )
+            metrics_insert(
+                ctx.db,
+                "llm_tokens",
+                float(state.total_tokens),
+                tags={"step": "run_total", "session_id": ctx.session_id, "run_id": rid, "cancelled": "true"},
+            )
         return "[Run cancelled by user.]", {
             "tokens": state.total_tokens,
             "cache_hit": False,
@@ -103,10 +120,27 @@ async def run_react(
             "resumable": state.resumable,
         }
     final_answer, total_tokens = await finalize_react_answer(
-        ctx=ctx, state=state, provider=provider,
+        ctx=ctx, state=state, provider=provider, run_id=run_id,
     )
     state.total_tokens = total_tokens
     emit_progress(progress_callback, total_tokens, 0)
+    if total_tokens > 0 and ctx.db.exists():
+        from db.logs import insert as log_insert
+        from db.metrics import insert as metrics_insert
+        rid = ctx.run_id or ""
+        log_insert(
+            ctx.db,
+            "INFO",
+            f"tokens step=run_total tokens={total_tokens}",
+            ctx.session_id,
+            {"step": "run_total", "tokens": total_tokens, "run_id": rid},
+        )
+        metrics_insert(
+            ctx.db,
+            "llm_tokens",
+            float(total_tokens),
+            tags={"step": "run_total", "session_id": ctx.session_id, "run_id": rid},
+        )
     deduped_refs = dedupe_references(state.all_references)
     return final_answer, {
         "tokens": total_tokens,

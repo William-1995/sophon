@@ -8,6 +8,9 @@ from typing import Any
 
 from constants import (
     TOOL_ACTION_HINT_MAX,
+    TOOL_COMPACT_DESC_MAX,
+    TOOL_COMPACT_ORCHESTRATION_MAX,
+    TOOL_COMPACT_TOOLS_SECTION_MAX,
     TOOL_FALLBACK_SECTION_MAX,
     TOOL_ORCHESTRATION_SECTION_MAX,
     TOOL_TOOLS_SECTION_MAX,
@@ -130,3 +133,24 @@ def _action_hint(skill_data: dict, allowed_actions: list[str] | None = None) -> 
 
     hint = ", ".join(actions)[:TOOL_ACTION_HINT_MAX]
     return f"Action from Tools: {hint}"
+
+
+def build_compact_tools_from_full(tools: list[dict]) -> list[dict]:
+    """Build compact tool definitions from full tools. Use for round 2+ to reduce tokens.
+
+    Keeps name and parameters; truncates description to TOOL_COMPACT_DESC_MAX chars.
+    """
+    compact: list[dict] = []
+    for t in tools:
+        fn = t.get("function") or {}
+        desc = (fn.get("description") or "").strip()
+        brief = desc[:TOOL_COMPACT_DESC_MAX].rstrip() + ("..." if len(desc) > TOOL_COMPACT_DESC_MAX else "")
+        compact.append({
+            "type": "function",
+            "function": {
+                "name": fn.get("name", ""),
+                "description": brief,
+                "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
+            },
+        })
+    return compact

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from config import get_config, SESSION_ID_LENGTH
+from constants import CONTEXT_ASSISTANT_BRIEF_MAX, CONTEXT_USER_BRIEF_MAX
 from db.schema import get_connection
 from db import memory_long_term, session_meta as db_session_meta
 
@@ -165,6 +166,28 @@ def resolve_session(db_path: Path, session_id: str) -> str | None:
 # Context building utilities
 # ---------------------------------------------------------------------------
 
+def _condense_message(role: str, content: str) -> str:
+    """Condense a single message for cross-run context to save tokens."""
+    s = (content or "").strip()
+    max_len = CONTEXT_USER_BRIEF_MAX if role == "user" else CONTEXT_ASSISTANT_BRIEF_MAX
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3].rstrip() + "..."
+
+
+def condense_context_for_llm(messages: list[dict]) -> list[dict]:
+    """Condense cross-run history for token savings. User and assistant get brief form.
+
+    Does not touch within-run ctx.messages (those stay full for ReAct continuity).
+    """
+    if not messages:
+        return []
+    return [
+        {"role": m.get("role", "user"), "content": _condense_message(m.get("role", "user"), m.get("content", ""))}
+        for m in messages
+    ]
+
+
 def build_context_from_db(
     session_id: str,
     db_path: Path,
@@ -186,7 +209,8 @@ def build_context_from_db(
     if limit is None:
         limit = get_config().memory.history_recent_count
 
-    return memory_long_term.get_recent(db_path, session_id, limit=limit)
+    raw = memory_long_term.get_recent(db_path, session_id, limit=limit)
+    return condense_context_for_llm(raw)
 
 
 def build_context_from_history(history: list[dict]) -> list[dict]:
@@ -201,10 +225,11 @@ def build_context_from_history(history: list[dict]) -> list[dict]:
     if not history:
         return []
 
-    return [
+    raw = [
         {"role": entry.get("role", "user"), "content": entry.get("content", "")}
         for entry in history[-10:]
     ]
+    return condense_context_for_llm(raw)
 
 
 def build_chat_context(

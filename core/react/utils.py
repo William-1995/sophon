@@ -9,7 +9,11 @@ import logging
 import re
 from typing import Any
 
-from constants import OBSERVATIONS_COMBINED_MAX
+from constants import (
+    OBSERVATIONS_COMBINED_MAX,
+    OBSERVATION_BRIEF_MAX,
+    OBSERVATIONS_KEEP_FULL_TAIL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,20 +35,38 @@ _TRACKING_PARAMS = frozenset(
 )
 
 
+def _obs_brief(obs: str, max_len: int = OBSERVATION_BRIEF_MAX) -> str:
+    """One-line summary for old-round observation."""
+    s = (obs or "").strip()
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3].rstrip() + "..."
+
+
 def truncate_observations_for_llm(
     observations: list[str],
     max_chars: int = OBSERVATIONS_COMBINED_MAX,
+    summarize_old: bool = True,
 ) -> str:
-    """Build 'Results:\n' + observations, truncating to max_chars. Keeps tail (most recent).
+    """Build 'Results:\n' + observations. Keeps recent full; older get brief form.
+
+    When summarize_old and we have more than OBSERVATIONS_KEEP_FULL_TAIL observations,
+    older ones are shortened to OBSERVATION_BRIEF_MAX chars each to save tokens.
 
     Args:
         observations: List of observation strings from tool executions.
         max_chars: Maximum characters to include in result.
-
-    Returns:
-        Combined and potentially truncated results string.
+        summarize_old: When True, use brief form for old observations.
     """
-    content = "Results:\n" + "\n".join(observations)
+    if not observations:
+        return "Results:\n"
+    keep_full = OBSERVATIONS_KEEP_FULL_TAIL if summarize_old else len(observations)
+    if len(observations) <= keep_full:
+        summarized = observations
+    else:
+        brief = [_obs_brief(o) for o in observations[:-keep_full]]
+        summarized = brief + observations[-keep_full:]
+    content = "Results:\n" + "\n".join(summarized)
     if len(content) <= max_chars:
         return content
     keep_len = max_chars - len(_TRUNCATE_PREFIX)

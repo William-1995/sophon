@@ -49,13 +49,25 @@ def main() -> None:
         print(json.dumps({"error": f"Invalid date format: {exc}"}))
         return
 
+    scope_ids = params.get("_memory_scope_session_ids")
+    if isinstance(scope_ids, list) and scope_ids:
+        placeholders = ",".join("?" * len(scope_ids))
+        sql = (
+            f"SELECT session_id, content, created_at FROM memory_long_term "
+            f"WHERE role = 'user' AND created_at >= ? AND created_at <= ? "
+            f"AND session_id IN ({placeholders}) ORDER BY created_at"
+        )
+        qargs: tuple = (since_ts, until_ts) + tuple(scope_ids)
+    else:
+        sql = (
+            "SELECT session_id, content, created_at FROM memory_long_term "
+            "WHERE role = 'user' AND created_at >= ? AND created_at <= ? ORDER BY created_at"
+        )
+        qargs = (since_ts, until_ts)
+
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT session_id, content, created_at FROM memory_long_term "
-        "WHERE role = 'user' AND created_at >= ? AND created_at <= ? ORDER BY created_at",
-        (since_ts, until_ts),
-    ).fetchall()
+    rows = conn.execute(sql, qargs).fetchall()
     conn.close()
 
     messages = [

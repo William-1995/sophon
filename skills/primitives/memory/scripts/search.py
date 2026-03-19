@@ -19,18 +19,32 @@ from common import resolve_db_path
 _CONTENT_PREVIEW = 200
 
 
-def _search(db_path: Path, keyword: str, limit: int | None) -> list:
+def _search(
+    db_path: Path,
+    keyword: str,
+    limit: int | None,
+    scope_session_ids: list[str] | None = None,
+) -> list:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     pattern = f"%{keyword}%"
-    sql = (
-        "SELECT session_id, content, created_at "
-        "FROM memory_long_term WHERE role = 'user' AND content LIKE ? ORDER BY created_at DESC"
-    )
-    args: tuple = (pattern,)
+    if scope_session_ids:
+        placeholders = ",".join("?" * len(scope_session_ids))
+        sql = (
+            f"SELECT session_id, content, created_at "
+            f"FROM memory_long_term WHERE role = 'user' AND content LIKE ? "
+            f"AND session_id IN ({placeholders}) ORDER BY created_at DESC"
+        )
+        args: tuple = (pattern,) + tuple(scope_session_ids)
+    else:
+        sql = (
+            "SELECT session_id, content, created_at "
+            "FROM memory_long_term WHERE role = 'user' AND content LIKE ? ORDER BY created_at DESC"
+        )
+        args = (pattern,)
     if limit:
         sql += " LIMIT ?"
-        args = (pattern, limit)
+        args = args + (limit,)
     rows = conn.execute(sql, args).fetchall()
     conn.close()
     return [
@@ -66,7 +80,12 @@ def main() -> None:
         }))
         return
 
-    results = _search(db_path, keyword, limit)
+    scope_ids = params.get("_memory_scope_session_ids")
+    if isinstance(scope_ids, list):
+        pass
+    else:
+        scope_ids = None
+    results = _search(db_path, keyword, limit, scope_session_ids=scope_ids)
     lines = [f"count={len(results)} keyword={keyword}"]
     lines.extend(f"[{r['time']}] {r['content']}" for r in results)
     print(json.dumps({

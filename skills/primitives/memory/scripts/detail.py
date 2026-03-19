@@ -30,6 +30,11 @@ def main() -> None:
         print(json.dumps({"error": "session_id is required"}))
         return
 
+    scope_ids = params.get("_memory_scope_session_ids")
+    if isinstance(scope_ids, list) and scope_ids and session_id not in scope_ids:
+        print(json.dumps({"error": f"session {session_id} is not in the current session tree"}))
+        return
+
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     rows = conn.execute(

@@ -6,6 +6,7 @@ import { MessageList } from '../MessageList/MessageList'
 import { InputArea } from '../InputArea/InputArea'
 import { formatSessionId } from '../../utils/session'
 import type { Message as MessageType, Skill } from '../../types'
+import type { LiveTodo } from '../../hooks/useChat'
 
 export interface LiveEvent {
   type: string
@@ -21,6 +22,8 @@ interface ChatAreaProps {
   sessionStatus: string | null
   liveTokens: number | null
   liveEvents?: LiveEvent[]
+  liveTodos?: { id: string; title: string; status: string }[]
+  liveTodos?: LiveTodo[]
   chatContainerRef: React.RefObject<HTMLDivElement | null>
   chatEndRef: React.RefObject<HTMLDivElement | null>
   showScrollToBottom: boolean
@@ -58,6 +61,7 @@ export function ChatArea({
   sessionStatus,
   liveTokens,
   liveEvents = [],
+  liveTodos = [],
   chatContainerRef,
   chatEndRef,
   showScrollToBottom,
@@ -104,6 +108,7 @@ export function ChatArea({
           sessionStatus={sessionStatus}
           liveTokens={liveTokens}
           liveEvents={liveEvents}
+          liveTodos={liveTodos}
           chatEndRef={chatEndRef}
         />
       </div>

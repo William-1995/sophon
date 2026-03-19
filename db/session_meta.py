@@ -118,6 +118,42 @@ def delete_session(db_path: Path, session_id: str) -> None:
         conn.close()
 
 
+def get_root_session_id(db_path: Path, session_id: str) -> str:
+    """Walk up parent_id until root (parent_id IS NULL). Returns session_id if already root or not in meta."""
+    if not db_path.exists():
+        return session_id
+    seen: set[str] = set()
+    current = session_id
+    while current:
+        if current in seen:
+            return session_id  # cycle guard
+        seen.add(current)
+        meta = get(db_path, current)
+        if not meta:
+            return session_id
+        pid = meta.get("parent_id")
+        if not pid:
+            return current
+        current = pid
+    return session_id
+
+
+def get_session_ids_in_tree(db_path: Path, root_session_id: str) -> list[str]:
+    """Return [root_session_id] + all descendant session_ids (BFS). Used for memory scope isolation."""
+    if not db_path.exists():
+        return [root_session_id]
+    result: list[str] = [root_session_id]
+    queue: list[str] = [root_session_id]
+    while queue:
+        pid = queue.pop(0)
+        for child in get_children(db_path, pid):
+            cid = child.get("session_id")
+            if cid and cid not in result:
+                result.append(cid)
+                queue.append(cid)
+    return result
+
+
 def get_children(db_path: Path, parent_id: str) -> list[dict]:
     """List child sessions of a parent. Returns [{session_id, parent_id, title, agent, kind, status, created_at, updated_at}, ...]."""
     if not db_path.exists():

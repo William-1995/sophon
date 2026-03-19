@@ -20,7 +20,8 @@ class ImmutableRunContext:
     Attributes:
         db: Path to the SQLite database.
         modified_question: User question with file injections applied.
-        tools: List of OpenAI-format tool definitions available to the agent.
+        tools: List of OpenAI-format tool definitions (full, for round 1).
+        compact_tools: Shorter tool definitions for round 2+ to reduce tokens.
         system: System prompt for the LLM.
         messages: Current conversation messages (mutated in-place by rounds).
         start_round: Round number to start from (1 for new runs, >1 for resume).
@@ -28,6 +29,8 @@ class ImmutableRunContext:
         user_id: User identifier.
         workspace_root: Root path for workspace operations.
         question: Original user question (before modifications).
+        multi_part: True when question appears to have multiple distinct sub-requests.
+        run_id: Optional run identifier for tracing.
     """
 
     db: Path
@@ -40,6 +43,9 @@ class ImmutableRunContext:
     user_id: str
     workspace_root: Path
     question: str
+    multi_part: bool = False
+    run_id: str | None = None
+    compact_tools: list | None = None
 
 
 @dataclass

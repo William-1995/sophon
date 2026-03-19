@@ -47,6 +47,10 @@ class EventType(str, Enum):
     # Emotion events (orb ring)
     EMOTION_UPDATED = "EMOTION_UPDATED"
 
+    # Todos (plan-first execution)
+    TODOS_PLAN = "TODOS_PLAN"
+    TODOS_UPDATED = "TODOS_UPDATED"
+
 
 # ---------------------------------------------------------------------------
 # Event type aliases for backward compatibility
@@ -69,3 +73,5 @@ THINKING = EventType.THINKING
 TOOL_START = EventType.TOOL_START
 TOOL_END = EventType.TOOL_END
 EMOTION_UPDATED = EventType.EMOTION_UPDATED
+TODOS_PLAN = EventType.TODOS_PLAN
+TODOS_UPDATED = EventType.TODOS_UPDATED

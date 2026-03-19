@@ -38,6 +38,7 @@ SKILL_TIMEOUT_OVERRIDES: dict[str, int] = {
     "deep-research": 300,
     "crawler": 60,
     "excel-ops": 1200,  # Sub-agent + crawl per row
+    "todos": 60,  # LLM planning + HITL
 }
 
 # ── ReAct loop ────────────────────────────────────────────────────────────────
@@ -62,11 +63,24 @@ TOOL_ORCHESTRATION_SECTION_MAX = 1200
 TOOL_TOOLS_SECTION_MAX = 1400
 TOOL_FALLBACK_SECTION_MAX = 1200
 TOOL_ACTION_HINT_MAX = 200
+# Compact mode (round 2+): smaller sections to reduce tokens
+TOOL_COMPACT_DESC_MAX = 120
+TOOL_COMPACT_ORCHESTRATION_MAX = 400
+TOOL_COMPACT_TOOLS_SECTION_MAX = 500
+
+# ── Cross-run context (initial history before ReAct) ──────────────────────────
+# Condense past Q&A to reduce tokens. Only applies to build_chat_context output.
+CONTEXT_USER_BRIEF_MAX = 200  # Max chars per user message in condensed context
+CONTEXT_ASSISTANT_BRIEF_MAX = 120  # Max chars per assistant message in condensed context
 
 # ── Observation handling ──────────────────────────────────────────────────────
 OBSERVATION_PREVIEW_LEN = 800
 # Max total chars of "Results:\n" + observations sent to LLM per round
 OBSERVATIONS_COMBINED_MAX = 12000
+# When summarizing old rounds: keep this many recent observations in full; older ones get brief form
+OBSERVATIONS_KEEP_FULL_TAIL = 3
+# Max chars per observation when in "brief" (old-round) form
+OBSERVATION_BRIEF_MAX = 80
 
 # Lightweight LLM eval: only look at the last N observations
 EVAL_OBSERVATION_PREVIEW_LEN = 400

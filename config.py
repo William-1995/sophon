@@ -111,6 +111,10 @@ class ReactConfig:
         default_factory=lambda: os.environ.get("SOPHON_THINKING_ENABLED", "true").lower() in ("1", "true", "yes")
     )
     """When True, prompts LLM to wrap reasoning in <thinking>...</thinking>; parsed and emitted as THINKING events. Disable via SOPHON_THINKING_ENABLED=0."""
+    todos_enabled: bool = field(
+        default_factory=lambda: os.environ.get("SOPHON_TODOS_ENABLED", "false").lower() in ("1", "true", "yes")
+    )
+    """Legacy: when True, auto-run plan-first for every run. Prefer using the todos skill for complex tasks. Disable by default."""
 
 
 @dataclass(frozen=True)
@@ -129,12 +133,23 @@ def _executor_timeout_overrides() -> tuple[tuple[str, int], ...]:
     return tuple(SKILL_TIMEOUT_OVERRIDES.items())
 
 
-def get_executor_param_injections(skill_name: str, action: str) -> dict:
+def get_executor_param_injections(
+    skill_name: str,
+    action: str,
+    db_path: Path | None = None,
+    session_id: str | None = None,
+) -> dict:
     """Return extra params to merge into skill args. Config-driven; no hardcoding in executor."""
     cfg = get_config()
+    out: dict = {}
     if skill_name == "memory" and action == "search":
-        return {"_memory_search_default_limit": cfg.memory.memory_search_default_limit}
-    return {}
+        out["_memory_search_default_limit"] = cfg.memory.memory_search_default_limit
+    if skill_name == "memory" and cfg.memory.memory_scope_by_parent and db_path and session_id:
+        from db import session_meta
+        root_id = session_meta.get_root_session_id(db_path, session_id)
+        scope_ids = session_meta.get_session_ids_in_tree(db_path, root_id)
+        out["_memory_scope_session_ids"] = scope_ids
+    return out
 
 
 @dataclass(frozen=True)
@@ -146,6 +161,10 @@ class MemoryConfig:
     recent_files_days: int = 7
     referent_context_rounds: int = 3
     """For referent resolution (e.g. 'my question', 'write to file'), limit context to the most recent N rounds (1 round = 1 user + 1 assistant message). Older messages are excluded from the prompt to avoid confusion."""
+    memory_scope_by_parent: bool = field(
+        default_factory=lambda: os.environ.get("SOPHON_MEMORY_SCOPE_BY_PARENT", "true").lower() in ("1", "true", "yes")
+    )
+    """When True, memory queries (analyze, search, explore) are scoped to sessions in the same parent tree. Different parent sessions cannot see each other's memory."""
     memory_search_default_limit: int = field(
         default_factory=lambda: _safe_env_int("SOPHON_MEMORY_SEARCH_DEFAULT_LIMIT", "200")
     )
@@ -196,6 +215,7 @@ class SkillConfig:
         "troubleshoot",
         "deep-research",
         "excel-ops",
+        "todos",
         "search",
         "crawler",
         "filesystem",

@@ -95,7 +95,13 @@ def build_skill_params(
         params["session_id"] = None
     if db_path:
         params["db_path"] = str(db_path)
-    params.update(get_executor_param_injections(skill_name, action))
+    params.update(
+        get_executor_param_injections(
+            skill_name, action,
+            db_path=db_path,
+            session_id=session_id,
+        )
+    )
     return params
 
 

@@ -173,6 +173,7 @@ async def evaluate_observations(
     question: str,
     observations: list[str],
     provider: BaseProvider,
+    multi_part: bool = False,
 ) -> tuple[bool, int]:
     """Evaluate whether observations suffice to answer the question.
 
@@ -183,6 +184,7 @@ async def evaluate_observations(
         question: Original user question.
         observations: List of tool result strings.
         provider: LLM provider for the eval call.
+        multi_part: When True, require observations covering all sub-parts.
 
     Returns:
         (satisfied, tokens_used). satisfied is True if the eval model thinks
@@ -196,11 +198,19 @@ async def evaluate_observations(
         _format_obs_line(i, obs, EVAL_OBSERVATION_PREVIEW_LEN)
         for i, obs in enumerate(tail)
     )
-    sys_prompt = (
-        "You evaluate if tool results contain USEFUL info to answer the question. "
-        "Reply with JSON only: {\"satisfied\": true/false}. "
-        "Be lenient: if ANY relevant content exists, satisfied=true."
-    )
+    if multi_part:
+        sys_prompt = (
+            "You evaluate if tool results contain USEFUL info to answer ALL parts of the question. "
+            "Reply with JSON only: {\"satisfied\": true/false}. "
+            "For multi-part requests, satisfied=true ONLY when observations cover each distinct sub-task. "
+            "If any part is missing tool output, satisfied=false."
+        )
+    else:
+        sys_prompt = (
+            "You evaluate if tool results contain USEFUL info to answer the question. "
+            "Reply with JSON only: {\"satisfied\": true/false}. "
+            "Be lenient: if ANY relevant content exists, satisfied=true."
+        )
     user_prompt = f"Question: {question}\n\nObservations:\n{obs_text}\n\nSuffice? JSON only."
     try:
         resp = await provider.chat(

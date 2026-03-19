@@ -103,7 +103,22 @@ def log_skill_success(
     from db.logs import insert as log_insert
     from db.metrics import insert as metrics_insert
     preview = json.dumps(result, ensure_ascii=False)[:EXECUTOR_TRACE_PREVIEW_LEN]
-    trace_insert(db_path, session_id, skill_name, action, 0, preview, {"latency_ms": latency_ms})
+    skill_tokens = int(result.get("tokens", 0) or 0)
+    trace_insert(db_path, session_id, skill_name, action, skill_tokens, preview, {"latency_ms": latency_ms})
+    if skill_tokens > 0:
+        log_insert(
+            db_path,
+            "INFO",
+            f"tokens step=skill_{skill_name}.{action} tokens={skill_tokens}",
+            session_id,
+            {"step": f"skill_{skill_name}.{action}", "tokens": skill_tokens, "skill": skill_name, "action": action},
+        )
+        metrics_insert(
+            db_path,
+            "llm_tokens",
+            float(skill_tokens),
+            tags={"step": f"skill_{skill_name}.{action}", "skill": skill_name, "action": action, "session_id": session_id or ""},
+        )
     metrics_insert(
         db_path,
         "skill_latency_ms",

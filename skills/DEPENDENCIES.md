@@ -22,6 +22,7 @@ pip packages and system dependencies for each skill. All skills work out of the 
 | **deep-research** | httpx, beautifulsoup4 | ✅ | crawler deps | ✅ |
 | **excel-ops** | via excel,search,crawler | ✅ | same as crawler | ✅ |
 | **troubleshoot** | via log,trace,metrics | - | None | ✅ |
+| **todos** | None | - | None | ✅ |
 | **emotion-awareness** | None | - | None | ✅ |
 
 ## Notes

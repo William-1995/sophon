@@ -91,9 +91,12 @@ async def run_llm_round_and_count_tokens(
         len(ctx.tools),
         [t.get("function", {}).get("name") for t in ctx.tools],
     )
+    tools_for_round = (
+        getattr(ctx, "compact_tools", None) if round_num > 1 else None
+    ) or ctx.tools
     try:
         resp = await provider.chat(
-            ctx.messages, tools=ctx.tools, system_prompt=ctx.system
+            ctx.messages, tools=tools_for_round, system_prompt=ctx.system
         )
     except Exception as e:
         if ctx.db.exists():
@@ -120,7 +123,14 @@ async def run_llm_round_and_count_tokens(
             "INFO",
             f"llm_response round={round_num} tokens={tok}",
             ctx.session_id,
-            {"tokens": tok},
+            {"tokens": tok, "step": "llm_round", "round": round_num},
+        )
+        from db.metrics import insert as metrics_insert
+        metrics_insert(
+            ctx.db,
+            "llm_tokens",
+            float(tok),
+            tags={"step": "llm_round", "round": round_num, "session_id": ctx.session_id, "run_id": (ctx.run_id or "")},
         )
     emit_progress(progress_callback, state.total_tokens, round_num)
     return resp
@@ -166,7 +176,7 @@ async def run_react_rounds(
             ctx.messages.append({"role": "assistant", "content": resp.get("content", "")})
             return
 
-        obs_list, gu, direct, refs, abort_run = await execute_tool_calls_batch(
+        obs_list, gu, direct, refs, abort_run, skill_tokens = await execute_tool_calls_batch(
             calls,
             ctx.workspace_root,
             ctx.session_id,
@@ -176,11 +186,30 @@ async def run_react_rounds(
             event_sink=event_sink,
             run_id=run_id,
             decision_waiter=decision_waiter,
+            tools=ctx.tools,
         )
         if check_cancel_after_tools(
             cancel_check, ctx, state, round_num, run_id, resp, obs_list
         ):
             return
+        if skill_tokens > 0:
+            state.total_tokens += skill_tokens
+            if ctx.db.exists():
+                from db.logs import insert as log_insert
+                from db.metrics import insert as metrics_insert
+                log_insert(
+                    ctx.db,
+                    "INFO",
+                    f"tokens step=skill tokens={skill_tokens} round={round_num}",
+                    ctx.session_id,
+                    {"step": "skill", "tokens": skill_tokens, "round": round_num},
+                )
+                metrics_insert(
+                    ctx.db,
+                    "llm_tokens",
+                    float(skill_tokens),
+                    tags={"step": "skill", "round": round_num, "session_id": ctx.session_id, "run_id": run_id or ""},
+                )
         if abort_run:
             logger.info("[react] early exit requested by skill run_id=%s", run_id)
             merge_round_into_state(state, obs_list, gu, direct, refs)
@@ -188,7 +217,8 @@ async def run_react_rounds(
             return
         merge_round_into_state(state, obs_list, gu, direct, refs)
         satisfied = await append_round_and_evaluate(
-            ctx, state, resp, provider, progress_callback, round_num
+            ctx, state, resp, provider, progress_callback, round_num,
+            run_id=run_id if run_id is not None else getattr(ctx, "run_id", None),
         )
         if satisfied:
             return

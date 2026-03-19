@@ -23,13 +23,22 @@ from common import resolve_db_path
 EXPLORE_MAX_SESSIONS_DISPLAY = 100
 
 
-def _load_session_index(db_path: Path) -> dict:
+def _load_session_index(db_path: Path, scope_session_ids: list[str] | None = None) -> dict:
     """Load lightweight session index: {session_id: {count, first_ts, last_ts}}."""
     conn = sqlite3.connect(str(db_path))
-    rows = conn.execute(
-        "SELECT session_id, COUNT(*) as cnt, MIN(created_at) as first_ts, MAX(created_at) as last_ts "
-        "FROM memory_long_term GROUP BY session_id ORDER BY last_ts DESC"
-    ).fetchall()
+    if scope_session_ids:
+        placeholders = ",".join("?" * len(scope_session_ids))
+        sql = (
+            f"SELECT session_id, COUNT(*) as cnt, MIN(created_at) as first_ts, MAX(created_at) as last_ts "
+            f"FROM memory_long_term WHERE session_id IN ({placeholders}) "
+            f"GROUP BY session_id ORDER BY last_ts DESC"
+        )
+        rows = conn.execute(sql, scope_session_ids).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT session_id, COUNT(*) as cnt, MIN(created_at) as first_ts, MAX(created_at) as last_ts "
+            "FROM memory_long_term GROUP BY session_id ORDER BY last_ts DESC"
+        ).fetchall()
     conn.close()
     return {
         r[0]: {"message_count": r[1], "first_ts": r[2], "last_ts": r[3]}
@@ -49,7 +58,10 @@ def main() -> None:
         print(json.dumps({"error": "Database not found", "db_path": str(db_path)}))
         return
 
-    index = _load_session_index(db_path)
+    scope_ids = params.get("_memory_scope_session_ids")
+    if not isinstance(scope_ids, list):
+        scope_ids = None
+    index = _load_session_index(db_path, scope_session_ids=scope_ids)
     total_messages = sum(v["message_count"] for v in index.values())
     next_steps = (
         "Use memory.search(keyword) for topic search, "

@@ -217,6 +217,8 @@ function App() {
           lastCancelledRunId={chat.lastCancelledRunId}
           runId={chat.runId}
           liveEvents={chat.liveEvents}
+          liveTodos={chat.liveTodos}
+          liveTodos={chat.liveTodos}
           onKeyDown={handleKeyDown}
           inputRef={inputRef}
         />

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Return Sophon introduction and skills grouped by tier/channel (name + description)."""
+"""Return Sophon intro and skill names only. LLM summarizes for the user."""
 import json
 import logging
 import sys
@@ -9,17 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def _format_section_title(tier: str, channel: str) -> str:
-    """Format section title from tier and channel.
-
-    Optional tier: do not show "optional"; use channel only. Entertainment has no parent.
-    """
     if tier == "optional":
-        if channel == "entertainment":
-            return ""  # No parent for emotion-awareness
-        return channel or "optional"  # e.g. "work"
-    if channel:
-        return f"{tier} / {channel}"
-    return tier
+        return "" if channel == "entertainment" else (channel or "optional")
+    return f"{tier} / {channel}" if channel else tier
 
 
 def main() -> None:
@@ -49,25 +41,23 @@ def main() -> None:
             if not skills:
                 continue
             title = _format_section_title(tier, channel)
-            skill_lines = [f"- **{s['skill_name']}**: {s['skill_description']}" for s in skills]
+            skill_lines = [f"- {s['skill_name']}" for s in skills]
             if title:
                 section_lines.append(f"### {title}\n\n" + "\n".join(skill_lines))
             else:
                 section_lines.append("\n".join(skill_lines))
             total_skills += len(skills)
 
-        intro_lines = [
-            "I am Sophon, a local, skill-native AI agent that orchestrates tools defined as skills."
-        ]
+        intro = "I am Sophon, a skill-native AI agent."
 
         if section_lines:
             text = (
-                "\n".join(intro_lines)
-                + "\n\nAvailable capabilities:\n\n"
+                intro
+                + "\n\nAvailable skills:\n\n"
                 + "\n\n".join(section_lines)
             )
         else:
-            text = "\n".join(intro_lines) + "\n\nNo capabilities are currently configured."
+            text = intro + "\n\nNo skills are currently configured."
 
         if db_path and db_path.exists():
             log_insert(db_path, "INFO", "capabilities.list", session_id, {"skills_count": total_skills})

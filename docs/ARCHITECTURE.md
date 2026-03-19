@@ -2,6 +2,8 @@
 
 This document describes the technical architecture of Sophon.
 
+> **Recent changes**: See [CHANGES.md](CHANGES.md) for token optimizations, multi-part handling, and metrics.
+
 ## Overview
 
 Sophon uses a modular architecture with clear separation of concerns:

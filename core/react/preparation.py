@@ -15,7 +15,7 @@ from config import get_config
 from constants import DB_FILENAME
 from core.executor import execute_skill
 from core.skill_loader import get_skill_loader, get_skills_brief, get_skills_for_session
-from core.tool_builder import build_tools_from_skills
+from core.tool_builder import build_compact_tools_from_full, build_tools_from_skills
 from providers import BaseProvider
 
 from core.react.context import ImmutableRunContext, MutableRunState
@@ -26,6 +26,32 @@ from core.react.utils import _COMPOSITE_BODY_INJECT_MAX
 logger = logging.getLogger(__name__)
 
 # HITL: synthetic tool name for human-in-the-loop
+
+
+def _detect_multi_part_request(question: str) -> bool:
+    """Heuristic fallback when skill_filter is set (no LLM skill selection).
+
+    Used only when we skip select_skills_for_question. Prefer multi_step from LLM when available.
+    """
+    q = (question or "").strip()
+    if len(q) < 25:
+        return False
+    # Conjunctions suggesting multiple sub-requests
+    if re.search(
+        r"\b(and|以及|还有|另外|同时|顺便|再|also|then|plus)\b",
+        q,
+        re.I,
+    ):
+        return True
+    # Comma/semicolon suggesting list of requests
+    if re.search(r"[,，;；]\s*(?:\w|@)", q):
+        return True
+    # Multiple @references
+    if len(re.findall(r"@\S+", q)) >= 2:
+        return True
+    return False
+
+
 HITL_TOOL_NAME = "request_human_decision"
 
 
@@ -119,10 +145,10 @@ async def _build_react_tools_and_skills(
     skill_filter: str | None,
     decision_waiter: Any,
     run_id: str | None,
-) -> tuple[list, list[dict], Any]:
-    """Resolve skills and build tools. Returns (tools, skills_brief, loader)."""
+) -> tuple[list, list[dict], Any, bool, int]:
+    """Resolve skills and build tools. Returns (tools, skills_brief, loader, multi_part, select_tokens)."""
     skills_brief = get_skills_brief()
-    selected, skills_for_session = await _resolve_react_skills(
+    selected, skills_for_session, select_tokens, multi_part = await _resolve_react_skills(
         question, provider, skill_filter, skills_brief
     )
     _log_react_skills_selected(selected, skills_for_session, skill_filter)
@@ -133,7 +159,7 @@ async def _build_react_tools_and_skills(
         all_skills, loader, actions_filter, decision_waiter, run_id
     )
     _log_react_tools(tools)
-    return tools, skills_brief, loader
+    return tools, skills_brief, loader, multi_part, select_tokens
 
 
 async def prepare_react_run(
@@ -178,12 +204,25 @@ async def prepare_react_run(
     if file_context:
         logger.info("Auto-injected %d file(s) from @references", len(file_context))
 
-    tools, skills_brief, loader = await _build_react_tools_and_skills(
+    (
+        tools,
+        skills_brief,
+        loader,
+        multi_part,
+        select_tokens,
+    ) = await _build_react_tools_and_skills(
         question, provider, skill_filter, decision_waiter, run_id
     )
 
     if db.exists():
         log_insert(db, "INFO", f"react_start question={modified_question}", session_id)
+
+    state = MutableRunState()
+    state.total_tokens = select_tokens
+    if select_tokens > 0 and db.exists():
+        log_insert(db, "INFO", f"tokens step=select_skills tokens={select_tokens}", session_id, {"step": "select_skills", "tokens": select_tokens})
+        from db.metrics import insert as metrics_insert
+        metrics_insert(db, "llm_tokens", float(select_tokens), tags={"step": "select_skills", "session_id": session_id, "run_id": run_id or ""})
 
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     composite = loader.get_skill(skill_filter) if skill_filter else None
@@ -194,19 +233,21 @@ async def prepare_react_run(
         system_prompt_override,
         modified_question,
         composite_body_max=_COMPOSITE_BODY_INJECT_MAX,
+        multi_part=multi_part,
     )
     referent_rounds = get_config().memory.referent_context_rounds
     messages = build_initial_messages(
         modified_question, context, referent_rounds, file_context
     )
-    state = MutableRunState()
     start_round, modified_question = _apply_resume_checkpoint(
         resume_checkpoint, messages, state, modified_question
     )
+    compact_tools = build_compact_tools_from_full(tools)
     ctx = ImmutableRunContext(
         db=db,
         modified_question=modified_question,
         tools=tools,
+        compact_tools=compact_tools,
         system=system,
         messages=messages,
         start_round=start_round,
@@ -214,6 +255,8 @@ async def prepare_react_run(
         user_id=user_id,
         workspace_root=workspace_root,
         question=question,
+        multi_part=multi_part,
+        run_id=run_id,
     )
     return ctx, state
 
@@ -223,22 +266,32 @@ async def _resolve_react_skills(
     provider: BaseProvider,
     skill_filter: str | None,
     skills_brief: list[dict[str, str]],
-) -> tuple[list[str], list[dict]]:
-    """Resolve selected skill names and skills_for_session list.
+) -> tuple[list[str], list[dict], int, bool]:
+    """Resolve selected skill names, skills_for_session, tokens, and multi_step.
 
     Returns:
-        Tuple of (selected, skills_for_session).
+        Tuple of (selected, skills_for_session, select_skills_tokens, multi_part).
+        multi_part: True when multi-step planning (todos.plan) is needed. From LLM when available, else heuristic.
     """
     if skill_filter:
         selected = [skill_filter]
+        select_tokens = 0
+        multi_part = _detect_multi_part_request(question)
     else:
-        selected = await select_skills_for_question(question, provider, skills_brief)
+        selected, select_tokens, multi_part = await select_skills_for_question(
+            question, provider, skills_brief
+        )
+    if multi_part and "todos" not in selected:
+        valid = {s["skill_name"] for s in skills_brief}
+        if "todos" in valid:
+            selected = list(selected) + ["todos"]
+            logger.info("[react] multi_part detected, added todos to selected")
     skills_for_session = (
         get_skills_for_session(skill_filter=skill_filter)
         if skill_filter
         else get_skills_for_session(selected_skills=selected)
     )
-    return selected, skills_for_session
+    return selected, skills_for_session, select_tokens, multi_part
 
 
 def _log_react_skills_selected(

@@ -23,6 +23,20 @@ from core.react.utils import format_skill_observation, save_cancel_checkpoint
 logger = logging.getLogger(__name__)
 
 
+def _tools_to_brief(tools: list) -> list[dict]:
+    """Build tools_brief for todos.plan injection. Returns [{name, description}, ...]."""
+    out = []
+    for t in tools or []:
+        fn = t.get("function") if isinstance(t, dict) else None
+        if not fn:
+            continue
+        name = fn.get("name", "")
+        desc = (fn.get("description") or "")[:120]
+        if name:
+            out.append({"name": name, "description": desc})
+    return out
+
+
 async def execute_tool_calls_batch(
     calls: list[tuple[str, str, dict, str | None]],
     workspace_root: Path,
@@ -33,6 +47,7 @@ async def execute_tool_calls_batch(
     event_sink: EventSink = None,
     run_id: str | None = None,
     decision_waiter: DecisionWaiter = None,
+    tools: list | None = None,
 ) -> tuple[list[str], dict[str, Any] | None, str | None, list[dict], bool]:
     """Execute tool calls in parallel with semaphore.
 
@@ -48,19 +63,25 @@ async def execute_tool_calls_batch(
         decision_waiter: Optional HITL decision waiter.
 
     Returns:
-        Tuple of (observations, gen_ui, direct_answer, references, abort_run).
+        Tuple of (observations, gen_ui, direct_answer, references, abort_run, skill_tokens).
         abort_run: True when a skill returned _abort_run (early exit requested).
+        skill_tokens: Sum of tokens from skills that returned them.
     """
     sem = asyncio.Semaphore(max_parallel)
 
     async def run_one(
         name: str, tool: str, arguments: dict, display_summary: str | None
-    ) -> tuple[str, dict | None, str | None, list[dict]]:
+    ) -> tuple[str, dict | None, str | None, list[dict], bool, int]:
+        args = dict(arguments)
+        if name == "todos" and tool == "plan" and tools:
+            brief = _tools_to_brief(tools)
+            args["_tools_brief"] = brief
+            logger.info("[react] todos.plan injected _tools_brief count=%d tools=%s", len(brief), [b.get("name") for b in brief])
         async with sem:
             return await execute_tool_call(
                 name=name,
                 tool=tool,
-                arguments=arguments,
+                arguments=args,
                 display_summary=display_summary,
                 workspace_root=workspace_root,
                 session_id=session_id,
@@ -78,7 +99,8 @@ async def execute_tool_calls_batch(
     direct_answer: str | None = None
     all_refs: list[dict] = []
     abort_run = False
-    for obs, gu, ans, refs, abort in results:
+    total_skill_tokens = 0
+    for obs, gu, ans, refs, abort, stok in results:
         observations.append(obs)
         if gu is not None:
             gen_ui = gu
@@ -88,7 +110,8 @@ async def execute_tool_calls_batch(
             all_refs.extend(refs)
         if abort:
             abort_run = True
-    return observations, gen_ui, direct_answer, all_refs, abort_run
+        total_skill_tokens += stok
+    return observations, gen_ui, direct_answer, all_refs, abort_run, total_skill_tokens
 
 
 async def execute_tool_call(
@@ -126,7 +149,7 @@ async def execute_tool_call(
     """
     if name == HITL_TOOL_NAME and decision_waiter:
         ret = await handle_hitl_tool_call(name, arguments, decision_waiter, gen_ui_collected)
-        return (*ret, False)  # HITL tool has no skill cancelled
+        return (*ret, False, 0)  # HITL tool: no abort, no skill tokens
 
     path_locks = get_locks_for_tool_call(workspace_root, name, tool, arguments)
     async with maybe_acquire_path_locks(path_locks):
@@ -178,9 +201,10 @@ async def execute_tool_call(
     emit_tool_end(event_sink, name, tool, result.get("error"))
     obs, gu, direct, refs = result_to_observation_and_extras(name, tool, result, gen_ui_collected)
     abort_run = bool(result.get(ABORT_RUN_KEY))
+    skill_tokens = int(result.get("tokens", 0) or 0)
     if abort_run:
         logger.info("[react] skill requested early exit %s.%s run_id=%s", name, tool, run_id)
-    return obs, gu, direct, refs, abort_run
+    return obs, gu, direct, refs, abort_run, skill_tokens
 
 
 async def handle_hitl_tool_call(

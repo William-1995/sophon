@@ -17,6 +17,7 @@ interface MessageListProps {
   sessionStatus: string | null
   liveTokens: number | null
   liveEvents?: LiveEvent[]
+  liveTodos?: { id: string; title: string; status: string }[]
   chatEndRef: React.RefObject<HTMLDivElement | null>
 }
 
@@ -69,12 +70,19 @@ function formatEvent(evt: LiveEvent): string {
   return t
 }
 
+function todoStatusIcon(status: string): string {
+  if (status === 'done') return '✓'
+  if (status === 'in_progress') return '●'
+  return '○'
+}
+
 export function MessageList({
   messages,
   loading,
   sessionStatus,
   liveTokens,
   liveEvents = [],
+  liveTodos = [],
   chatEndRef,
 }: MessageListProps) {
   const [eventsExpanded, setEventsExpanded] = React.useState(false)
@@ -98,6 +106,22 @@ export function MessageList({
             <SophonAvatar />
             <div className="message assistant">
               <div className="typing">{typingText}</div>
+              {liveTodos.length > 0 && (
+                <details
+                  className="live-todos"
+                  open={eventsExpanded}
+                  onToggle={(e) => setEventsExpanded((e.target as HTMLDetailsElement).open)}
+                >
+                  <summary>Plan ({liveTodos.length} steps)</summary>
+                  <ul>
+                    {liveTodos.map((t) => (
+                      <li key={t.id} className={`todo-status-${t.status}`}>
+                        {todoStatusIcon(t.status)} {t.title}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
               {liveEvents.length > 0 && (
                 <details
                   className="live-events"
