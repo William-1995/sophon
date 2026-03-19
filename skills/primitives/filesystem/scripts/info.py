@@ -26,11 +26,8 @@ def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
 def main() -> None:
     params = json.loads(sys.stdin.read())
     workspace_root = Path(params.get("workspace_root", ""))
-    path = params.get("path", "")
-
-    if not path:
-        print(json.dumps({"error": "path is required"}))
-        return
+    args = params.get("arguments") or params
+    path = (args.get("path") or params.get("path") or ".").strip() or "."
 
     target = workspace_root / path
     if not target.exists():
