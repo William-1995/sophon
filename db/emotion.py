@@ -192,6 +192,70 @@ def query_recent_hours(
         conn.close()
 
 
+def query_range(
+    db_path: Path,
+    since_ts: float,
+    until_ts: float,
+    session_id: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Get emotion segments within a time range [since_ts, until_ts].
+
+    Args:
+        db_path: Path to SQLite database.
+        since_ts: Start timestamp (inclusive).
+        until_ts: End timestamp (inclusive).
+        session_id: Optional session filter (session_id or parent_session_id).
+        limit: Max rows to return.
+
+    Returns:
+        List of segment dicts, newest first.
+    """
+    if not db_path or not db_path.exists():
+        return []
+    conn = _conn(db_path)
+    try:
+        if session_id:
+            cur = conn.execute(
+                """
+                SELECT session_id, parent_session_id, start_at, end_at,
+                       user_summary, system_summary, emotion_label, combined_summary,
+                       created_at
+                FROM emotion_segments
+                WHERE (session_id = ? OR parent_session_id = ?)
+                  AND end_at >= ? AND end_at <= ?
+                ORDER BY end_at DESC LIMIT ?
+                """,
+                (session_id, session_id, since_ts, until_ts, limit),
+            )
+        else:
+            cur = conn.execute(
+                """
+                SELECT session_id, parent_session_id, start_at, end_at,
+                       user_summary, system_summary, emotion_label, combined_summary,
+                       created_at
+                FROM emotion_segments
+                WHERE end_at >= ? AND end_at <= ?
+                ORDER BY end_at DESC LIMIT ?
+                """,
+                (since_ts, until_ts, limit),
+            )
+        cols = [
+            "session_id",
+            "parent_session_id",
+            "start_at",
+            "end_at",
+            "user_summary",
+            "system_summary",
+            "emotion_label",
+            "combined_summary",
+            "created_at",
+        ]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def query_by_time(
     db_path: Path,
     hours: float | None = None,
