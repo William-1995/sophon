@@ -48,6 +48,47 @@ def insert(
         conn.close()
 
 
+def get_in_time_range(
+    db_path: Path,
+    session_id: str,
+    start_at: float,
+    end_at: float,
+    limit: int = 50,
+) -> list[dict]:
+    """Get messages in a time range for a session, oldest first.
+
+    Args:
+        db_path: Path to SQLite database (used for existence check).
+        session_id: Session identifier.
+        start_at: Start timestamp (inclusive).
+        end_at: End timestamp (inclusive).
+        limit: Max rows to return.
+
+    Returns:
+        List of dicts with role, content, created_at.
+    """
+    if not db_path.exists():
+        return []
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            SELECT role, content, created_at
+            FROM memory_long_term
+            WHERE session_id = ? AND created_at >= ? AND created_at <= ?
+            ORDER BY created_at ASC
+            LIMIT ?
+            """,
+            (session_id, start_at, end_at, limit),
+        )
+        return [
+            {"role": row[0], "content": row[1], "created_at": row[2]}
+            for row in cur.fetchall()
+        ]
+    finally:
+        conn.close()
+
+
 def get_recent(db_path: Path, session_id: str, limit: int = 20) -> list[dict]:
     """Get recent messages for context injection. Returns [{role, content}, ...] in chronological order (oldest of the recent set first)."""
     if not db_path.exists():
