@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from config import get_config
+from core.react.types import CancelCheck, DecisionWaiter, EventSink, ProgressCallback
 from constants import DEFAULT_MAX_ROUNDS
 from core.react.context import ImmutableRunContext, MutableRunState
 from core.react.execution import (
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def check_cancel_at_round_start(
-    cancel_check: Any,
+    cancel_check: CancelCheck,
     ctx: ImmutableRunContext,
     state: MutableRunState,
     round_num: int,
@@ -63,8 +64,8 @@ async def run_llm_round_and_count_tokens(
     provider: BaseProvider,
     ctx: ImmutableRunContext,
     round_num: int,
-    event_sink: Any,
-    progress_callback: Any,
+    event_sink: EventSink,
+    progress_callback: ProgressCallback,
     state: MutableRunState,
 ) -> dict:
     """Call LLM, extract thinking, count tokens, log, emit progress.
@@ -129,11 +130,11 @@ async def run_react_rounds(
     provider: BaseProvider,
     ctx: ImmutableRunContext,
     state: MutableRunState,
-    cancel_check: Any,
-    progress_callback: Any,
-    event_sink: Any,
+    cancel_check: CancelCheck,
+    progress_callback: ProgressCallback,
+    event_sink: EventSink,
     run_id: str | None,
-    decision_waiter: Any,
+    decision_waiter: DecisionWaiter,
 ) -> None:
     """Run ReAct round loop. Mutates ctx.messages and state.
 

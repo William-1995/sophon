@@ -75,6 +75,22 @@ class PathConfig:
         self.profile_dir().mkdir(parents=True, exist_ok=True)
 
 
+def _safe_env_int(key: str, default: str) -> int:
+    """Parse env as int with fallback to default on invalid value."""
+    try:
+        return int(os.environ.get(key, default))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _safe_env_float(key: str, default: str) -> float:
+    """Parse env as float with fallback to default on invalid value."""
+    try:
+        return float(os.environ.get(key, default))
+    except (TypeError, ValueError):
+        return float(default)
+
+
 @dataclass(frozen=True)
 class ReactConfig:
     """ReAct engine configuration."""
@@ -87,6 +103,10 @@ class ReactConfig:
         default_factory=lambda: os.environ.get("SOPHON_HITL_ENABLED", "true").lower() in ("1", "true", "yes")
     )
     """When True, adds request_human_decision tool for human-in-the-loop. Disable via SOPHON_HITL_ENABLED=0."""
+    hitl_timeout_seconds: float = field(
+        default_factory=lambda: _safe_env_float("SOPHON_HITL_TIMEOUT", "300")
+    )
+    """Timeout for HITL decision waiter. Default 300s. Override via SOPHON_HITL_TIMEOUT."""
     thinking_enabled: bool = field(
         default_factory=lambda: os.environ.get("SOPHON_THINKING_ENABLED", "true").lower() in ("1", "true", "yes")
     )
@@ -127,7 +147,7 @@ class MemoryConfig:
     referent_context_rounds: int = 3
     """For referent resolution (e.g. 'my question', 'write to file'), limit context to the most recent N rounds (1 round = 1 user + 1 assistant message). Older messages are excluded from the prompt to avoid confusion."""
     memory_search_default_limit: int = field(
-        default_factory=lambda: int(os.environ.get("SOPHON_MEMORY_SEARCH_DEFAULT_LIMIT", "200"))
+        default_factory=lambda: _safe_env_int("SOPHON_MEMORY_SEARCH_DEFAULT_LIMIT", "200")
     )
     """Default top_k/limit for memory.search when LLM does not specify. Override via SOPHON_MEMORY_SEARCH_DEFAULT_LIMIT env."""
 
@@ -159,11 +179,11 @@ class EmotionConfig:
     )
     """Model for emotion sub-agent. If None, uses default chat model. SOPHON_EMOTION_MODEL to override."""
     user_weight: float = field(
-        default_factory=lambda: float(os.environ.get("SOPHON_EMOTION_USER_WEIGHT", "0.8"))
+        default_factory=lambda: _safe_env_float("SOPHON_EMOTION_USER_WEIGHT", "0.8")
     )
     """Weight for user signal (tone, messages). Default 0.8."""
     system_weight: float = field(
-        default_factory=lambda: float(os.environ.get("SOPHON_EMOTION_SYSTEM_WEIGHT", "0.2"))
+        default_factory=lambda: _safe_env_float("SOPHON_EMOTION_SYSTEM_WEIGHT", "0.2")
     )
     """Weight for system signal (tool chain, outcomes). Default 0.2."""
 
@@ -198,9 +218,8 @@ class DeepResearchConfig:
 
 
 def _resolve_deep_research_config() -> DeepResearchConfig:
-    import os
-    urls = int(os.environ.get("SOPHON_DEEP_RESEARCH_URLS", "10"))
-    concurrency = int(os.environ.get("SOPHON_DEEP_RESEARCH_CRAWLER_CONCURRENCY", "3"))
+    urls = _safe_env_int("SOPHON_DEEP_RESEARCH_URLS", "10")
+    concurrency = _safe_env_int("SOPHON_DEEP_RESEARCH_CRAWLER_CONCURRENCY", "3")
     return DeepResearchConfig(urls_per_sub_question=urls, crawler_concurrency=concurrency)
 
 
@@ -325,15 +344,22 @@ class AppConfig:
         return cfg
 
 
-# Mutable container avoids global keyword (we mutate in place, never rebind).
-_config: list[AppConfig] = []
+# Per-user config cache. Key "" or None -> "default" for backward compat.
+_config_cache: dict[str, AppConfig] = {}
+_DEFAULT_USER_KEY = "default"
 
 
 def get_config(user_id: str | None = None) -> AppConfig:
-    """Returns app config, lazily created on first call."""
-    if not _config:
-        _config.append(AppConfig.from_env(user_id))
-    return _config[0]
+    """Returns app config for user, lazily created. Each user_id gets isolated config."""
+    key = (user_id or _DEFAULT_USER_KEY).strip() or _DEFAULT_USER_KEY
+    if key not in _config_cache:
+        _config_cache[key] = AppConfig.from_env(key if key != _DEFAULT_USER_KEY else None)
+    return _config_cache[key]
+
+
+def reset_config_cache_for_tests() -> None:
+    """Clear config cache. Use in tests for isolation. Not for production."""
+    _config_cache.clear()
 
 
 def bootstrap(user_id: str | None = None) -> None:

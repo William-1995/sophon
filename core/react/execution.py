@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from constants import ABORT_RUN_KEY, DECISION_REQUEST_KEY
+from config import get_config
+from core.react.types import CancelCheck, DecisionWaiter, EventSink
 from core.agent_loop import parse_tool_calls
 from core.executor import execute_skill
 from core.path_lock import get_locks_for_tool_call, maybe_acquire_path_locks
@@ -28,9 +30,9 @@ async def execute_tool_calls_batch(
     user_id: str,
     db: Path,
     max_parallel: int,
-    event_sink: Any = None,
+    event_sink: EventSink = None,
     run_id: str | None = None,
-    decision_waiter: Any = None,
+    decision_waiter: DecisionWaiter = None,
 ) -> tuple[list[str], dict[str, Any] | None, str | None, list[dict], bool]:
     """Execute tool calls in parallel with semaphore.
 
@@ -99,9 +101,9 @@ async def execute_tool_call(
     user_id: str,
     db: Path,
     gen_ui_collected: dict | None,
-    event_sink: Any = None,
+    event_sink: EventSink = None,
     run_id: str | None = None,
-    decision_waiter: Any = None,
+    decision_waiter: DecisionWaiter = None,
 ) -> tuple[str, dict | None, str | None, list[dict], bool]:
     """Execute a single skill tool call.
 
@@ -148,10 +150,14 @@ async def execute_tool_call(
             choice: str
             if decision_waiter:
                 payload = dr.get("payload")
-                choice = await decision_waiter(
-                    str(dr["message"]),
-                    [str(c) for c in dr["choices"]],
-                    payload=payload if isinstance(payload, dict) else None,
+                timeout = get_config().react.hitl_timeout_seconds
+                choice = await asyncio.wait_for(
+                    decision_waiter(
+                        str(dr["message"]),
+                        [str(c) for c in dr["choices"]],
+                        payload=payload if isinstance(payload, dict) else None,
+                    ),
+                    timeout=timeout,
                 )
             else:
                 choice = str(dr["choices"][0]) if dr["choices"] else ""
@@ -180,7 +186,7 @@ async def execute_tool_call(
 async def handle_hitl_tool_call(
     name: str,
     arguments: dict,
-    decision_waiter: Any,
+    decision_waiter: DecisionWaiter,
     gen_ui_collected: dict | None,
 ) -> tuple[str, dict | None, str | None, list[dict]]:
     """Run HITL (request_human_decision) and return observation tuple.
@@ -201,7 +207,12 @@ async def handle_hitl_tool_call(
     else:
         choices = [str(c) for c in choices]
     try:
-        choice = await decision_waiter(msg, choices)
+        timeout = get_config().react.hitl_timeout_seconds
+        payload = arguments.get("payload") if isinstance(arguments.get("payload"), dict) else None
+        choice = await asyncio.wait_for(
+            decision_waiter(msg, choices, payload=payload),
+            timeout=timeout,
+        )
         obs = f"User chose: {choice}"
     except asyncio.TimeoutError:
         obs = "Decision timed out; proceeding with first option."
@@ -211,7 +222,7 @@ async def handle_hitl_tool_call(
 
 
 def emit_tool_start(
-    event_sink: Any,
+    event_sink: EventSink,
     name: str,
     tool: str,
     display_summary: str | None,
@@ -244,7 +255,7 @@ def emit_tool_start(
 
 
 def emit_tool_end(
-    event_sink: Any,
+    event_sink: EventSink,
     name: str,
     tool: str,
     error: Any,
@@ -298,7 +309,7 @@ def result_to_observation_and_extras(
 
 
 def check_cancel_after_tools(
-    cancel_check: Any,
+    cancel_check: "CancelCheck",
     ctx: ImmutableRunContext,
     state: MutableRunState,
     round_num: int,

@@ -1,6 +1,6 @@
 ---
 name: filesystem
-description: List, read, write, delete, rename files in workspace.
+description: List, read, write, delete, rename files in workspace, and read system/skills docs
 metadata:
   type: primitive
   dependencies: ""

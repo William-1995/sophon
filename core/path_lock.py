@@ -62,13 +62,26 @@ def _lock_key(workspace_root: Path, path: str) -> str:
     return f"{root}:{p}"
 
 
+def _evict_one_unlocked() -> bool:
+    """Evict one unlocked lock (FIFO among unlocked). Returns True if evicted."""
+    for k in list(_PATH_LOCKS.keys()):
+        if not _PATH_LOCKS[k].locked():
+            del _PATH_LOCKS[k]
+            return True
+    return False
+
+
 def _get_path_lock(workspace_root: Path, path: str) -> asyncio.Lock:
-    """Get or create a lock for (workspace, path). Thread-safe for asyncio."""
+    """Get or create a lock for (workspace, path). Evicts only unlocked locks when at limit."""
     key = _lock_key(workspace_root, path)
     if key not in _PATH_LOCKS:
         if len(_PATH_LOCKS) >= _PATH_LOCK_MAX:
-            evict = next(iter(_PATH_LOCKS))
-            del _PATH_LOCKS[evict]
+            if not _evict_one_unlocked():
+                # All locks held; allow over-limit (better than blocking)
+                logger.warning(
+                    "[path_lock] cache full (%d), all locks held; creating new lock (over limit)",
+                    _PATH_LOCK_MAX,
+                )
         _PATH_LOCKS[key] = asyncio.Lock()
     return _PATH_LOCKS[key]
 

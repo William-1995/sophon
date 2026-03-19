@@ -7,7 +7,7 @@ description: >
 metadata:
   type: feature
   entry_action: run
-  dependencies: ""
+  dependencies: "time"
 ---
 
 ## Orchestration Guidance
@@ -23,6 +23,7 @@ metadata:
 **Rules:**
 - Do NOT call capabilities.list for emotion questions; call this skill directly
 - One call is enough. Default scope=all retrieves across all sessions by time.
+- For time expressions ("last week", "yesterday", "past 3 days"): call `time.calculate` first, then `run` with scope=range, since, until.
 
 **Response style:** When presenting emotion insights to the user, **always use natural, human-like tone**. Be warm, empathetic, and conversational. Avoid robotic, clinical, or overly formal phrasing. Match the nuance and sensitivity appropriate to emotional topics.
 
@@ -56,11 +57,13 @@ Retrieve emotion segments. Single entry point; no sub-agent loop.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| scope | string | No | "all" (default) = all sessions by time; "recent_hours" = last N hours; "session" = current session only |
+| scope | string | No | "all" (default) = all sessions by time; "recent_hours" = last N hours; "range" = since/until; "session" = current session only |
+| since | string | For scope=range | Start date: YYYY-MM-DD or Unix timestamp |
+| until | string | For scope=range | End date: YYYY-MM-DD or Unix timestamp |
 | hours | number | No | For scope=recent_hours, look back hours (default: 168 = 7 days) |
 | limit | number | No | Max segments (default: 50) |
 
-Returns: segments, count, observation. session_id optional (required only for scope=session).
+Returns: segments, count, observation. session_id optional (required only for scope=session). For scope=range, call time.calculate first to resolve natural language to since/until.
 
 ## Output Contract
 

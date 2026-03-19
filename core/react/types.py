@@ -1,26 +1,19 @@
 """
-ReAct Types - Type aliases for ReAct module.
-
-Centralizes type definitions to avoid circular imports and improve readability.
+ReAct callback types - typed callbacks for event emission, cancellation, HITL.
 """
 
-from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Awaitable, Callable
 
-# Callback type for progress updates: (total_tokens, round_num)
-ProgressCallback = Callable[[int, int | None], None]
+# Event sink: receives event dict, no return
+EventSink = Callable[[dict[str, Any]], None] | None
 
-# Callback for event emission: receives event dict
-EventSink = Callable[[dict[str, Any]], None]
+# Cancel check: no args, returns True if cancelled
+CancelCheck = Callable[[], bool] | None
 
-# Callback for cancellation check: returns True if should cancel
-CancelCheck = Callable[[], bool]
+# Decision waiter: (message, choices, *, payload?) -> Awaitable[str]
+# Used for HITL when skill requests user confirmation
+DecisionWaiter = Callable[..., Awaitable[str]] | None
 
-# Callback for HITL decision: (message, choices) -> selected choice
-DecisionWaiter = Callable[[str, list[str]], Awaitable[str]]
 
-# Type alias for tool call structure: (skill_name, action, arguments)
-ToolCall = tuple[str, str, dict]
-
-# Type alias for reference structure from tools
-Reference = dict[str, Any]
+# Progress callback: (tokens, round_num) -> None
+ProgressCallback = Callable[[int, int], None] | None

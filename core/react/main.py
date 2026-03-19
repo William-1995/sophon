@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from core.react.types import CancelCheck, DecisionWaiter, EventSink, ProgressCallback
 from providers import BaseProvider
 from core.react.context import ImmutableRunContext, MutableRunState
 from core.react.preparation import prepare_react_run
@@ -37,12 +38,12 @@ async def run_react(
     skill_filter: str | None = None,
     context: list[dict] | None = None,
     db_path: Path | None = None,
-    progress_callback: Any = None,
+    progress_callback: ProgressCallback = None,
     system_prompt_override: str | None = None,
-    event_sink: Any = None,
+    event_sink: EventSink = None,
     run_id: str | None = None,
-    cancel_check: Any = None,
-    decision_waiter: Any = None,
+    cancel_check: CancelCheck = None,
+    decision_waiter: DecisionWaiter = None,
     resume_checkpoint: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Run ReAct loop. Returns (answer_text, metadata).
