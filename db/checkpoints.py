@@ -5,6 +5,11 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from constants import (
+    CHECKPOINT_QUESTION_READ_PREVIEW_MAX,
+    CHECKPOINT_QUESTION_STORE_MAX,
+    RUN_CHECKPOINT_LIST_DEFAULT_LIMIT,
+)
 from db.schema import get_connection
 
 
@@ -36,7 +41,7 @@ def insert(
                 run_id,
                 session_id,
                 round_num,
-                (question or "")[:2000],
+                (question or "")[:CHECKPOINT_QUESTION_STORE_MAX],
                 json.dumps(observations, ensure_ascii=False),
                 json.dumps(messages, ensure_ascii=False),
                 total_tokens,
@@ -79,7 +84,9 @@ def get_by_run_id(db_path: Path | None, run_id: str) -> dict[str, Any] | None:
         return None
 
 
-def list_by_session(db_path: Path | None, session_id: str, limit: int = 20) -> list[dict[str, Any]]:
+def list_by_session(
+    db_path: Path | None, session_id: str, limit: int = RUN_CHECKPOINT_LIST_DEFAULT_LIMIT
+) -> list[dict[str, Any]]:
     """List checkpoints for a session, newest first."""
     try:
         conn = _conn(db_path)
@@ -96,7 +103,7 @@ def list_by_session(db_path: Path | None, session_id: str, limit: int = 20) -> l
                 "run_id": r[1],
                 "session_id": r[2],
                 "round_num": r[3],
-                "question_preview": (r[4] or "")[:200],
+                "question_preview": (r[4] or "")[:CHECKPOINT_QUESTION_READ_PREVIEW_MAX],
                 "total_tokens": r[5] or 0,
                 "created_at": r[6],
             }

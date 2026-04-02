@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: Read and parse PDF documents. Supports structure (TOC), selective page reading. Accepts local path or content_base64 (from fetch).
+description: Read, inspect, and extract PDF content.
 metadata:
   type: primitive
   dependencies: ""
@@ -15,7 +15,7 @@ metadata:
 
 ### structure
 
-Return PDF structure: page count, metadata, outline (table of contents). No text extraction. Lightweight for large files. Call first to discover chapters/sections and decide which pages to parse.
+Return PDF structure: page count, metadata, outline (table of contents). No text extraction. Lightweight for large files. Call first to discover chapters/sections and decide which pages to parse. **Always pass `path`** (workspace-relative, e.g. `Rust 程序设计语言（第二版 & 2018 edition）简体中文版.pdf` or `docs/foo.pdf`) or `content_base64`; do not call with empty arguments.
 
 | Parameter     | Type   | Required | Description |
 |---------------|--------|----------|-------------|
@@ -34,7 +34,7 @@ Extract text and metadata from a PDF. Supports page_range or offset+limit for se
 |---------------|--------|----------|-------------|
 | path          | string | No*      | Path relative to workspace (e.g. docs/report.pdf) |
 | content_base64| string | No*      | Base64-encoded PDF bytes (from fetch.get for binary) |
-| page_range    | string | No       | Page range: "1-5", "1,3,5", or "1-" (1 to end). Omit for all. |
+| page_range    | string \| array | No       | Page range: `"1-5"`, `"1,3,5"`, `"1-"` (1 to end), or JSON array of 1-based pages e.g. `[38,39,40]`. Omit for all. |
 | offset        | int    | No       | Starting page (0-based). Use with limit for pagination. |
 | limit         | int    | No       | Max pages to extract. Use with offset for pagination. |
 | output_path   | string | No       | Write extracted text to this path (relative to workspace). |
@@ -50,7 +50,7 @@ Returns: `{pages, extracted_pages, text_by_page, metadata, observation, output_p
 
 ## Output Contract
 
-**Recommended flow** (like Excel: structure first, then read selectively):
+**Recommended flow** (structure first, then read selectively):
 
 1. Call `structure` to get page count and outline (chapters/sections with page numbers).
 2. Use `parse` with `page_range` or `offset`+`limit` to read only the pages you need.

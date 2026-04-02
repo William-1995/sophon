@@ -4,9 +4,9 @@ Sophon exposes a FastAPI-based HTTP API.
 
 ## Base URL
 
-```
-http://localhost:8080
-```
+Use the host and port where the API is bound. The default listen port is `DEFAULT_API_PORT` in `config/` package; set environment variable `PORT` to override.
+
+Example with defaults: `http://127.0.0.1` plus that port.
 
 ## Endpoints
 
@@ -55,6 +55,19 @@ GET /api/workspace/files
 ```
 
 List files in the workspace.
+
+```http
+POST /api/workspace/upload
+Content-Type: multipart/form-data
+```
+
+Form fields: `subdir` (optional, default `docs`), `files` (repeat one part per file). Saves under `workspace/{user}/<subdir>/` with safe path checks. Response JSON: `{ "saved": ["docs/a.txt", ...], "errors": [{ "name", "error" }] }`. Per-file size limit: `WORKSPACE_UPLOAD_MAX_BYTES` (re-exported from `constants.py`, source of truth in `config/common.py`). The web UI can attach multiple local files before send, and the backend writes them into the user workspace (default `docs/`).
+
+```http
+GET /api/workspace/download?files=docs/a.txt&files=docs/b.pdf&archive_name=workspace-files.zip
+```
+
+Download one or more visible workspace files as a zip archive. The backend validates that every requested file is visible and stays inside the user workspace. Response: `application/zip` with a sanitized filename.
 
 ### Chat (Streaming)
 

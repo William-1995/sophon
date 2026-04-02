@@ -1,33 +1,18 @@
 #!/usr/bin/env python3
 """
-Log Analyze Query - Query logs from SQLite.
+Query application logs from SQLite with time range, level, session, keyword, or regex.
 
-Queries application logs with filtering by:
-- Time range (since/until)
-- Log level (INFO, ERROR, DEBUG, etc.)
-- Session ID
-- Keyword (substring search)
-- Regex pattern
-
-Example:
-    $ echo '{"level": "ERROR", "limit": 50}' | python query.py
-    {"logs": [...], "count": 50}
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
 """
 
 import json
 import re
 import sys
 import time
-from pathlib import Path
-
-# Add skill root first (for constants), then project root (for common)
-_skill_root = Path(__file__).resolve().parent.parent
-_root = _skill_root.parent.parent.parent
-for p in (_skill_root, _root):
-    if str(p) not in sys.path:
-        sys.path.insert(0, str(p))
 
 from common import resolve_db_path, ts_to_date
+from defaults import ISO_DATE_YYYY_MM_DD_LEN, SECONDS_PER_DAY, SQL_DATE_FORMAT
 from db.logs import query as query_logs
 
 
@@ -36,7 +21,7 @@ from db.logs import query as query_logs
 # ---------------------------------------------------------------------------
 
 DEFAULT_LIMIT = 1000
-DATE_FORMAT = "%Y-%m-%d"
+DATE_FORMAT = SQL_DATE_FORMAT
 
 
 # ---------------------------------------------------------------------------
@@ -76,9 +61,11 @@ def _parse_timestamp(ts_str: str | None, is_end: bool = False) -> float | None:
         return None
 
     try:
-        ts = time.mktime(time.strptime(ts_str[:10], DATE_FORMAT))
+        ts = time.mktime(
+            time.strptime(ts_str[:ISO_DATE_YYYY_MM_DD_LEN], DATE_FORMAT)
+        )
         if is_end:
-            ts += 86400  # Add one day
+            ts += SECONDS_PER_DAY
         return ts
     except ValueError:
         return None

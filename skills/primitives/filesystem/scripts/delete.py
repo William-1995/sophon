@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Filesystem delete - delete file(s). Two-phase: first list files for confirmation, then delete."""
+"""Filesystem delete - delete file(s). Two-phase: first list files for confirmation, then delete.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-_SKILL_DIR = _SCRIPTS_DIR.parent
-if str(_SKILL_DIR) not in sys.path:
-    sys.path.insert(0, str(_SKILL_DIR))
+from common.path_utils import ensure_in_workspace as _ensure_in_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ try:
     from constants import (
         CANCEL_CHOICE,
         CONFIRM_CHOICE,
+        DECISION_PAYLOAD_AUTO_CONFIRM_IF_PLAN_CONFIRMED,
         DECISION_REQUEST_KEY,
         DELETE_PARALLEL_WORKERS,
     )
@@ -25,14 +27,7 @@ except ImportError:
     CONFIRM_CHOICE = "Confirm"
     DECISION_REQUEST_KEY = "__decision_request"
     DELETE_PARALLEL_WORKERS = 8
-
-
-def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
-    try:
-        target.resolve().relative_to(workspace_root.resolve())
-        return True
-    except ValueError:
-        return False
+    DECISION_PAYLOAD_AUTO_CONFIRM_IF_PLAN_CONFIRMED = "auto_confirm_if_plan_confirmed"
 
 
 def _delete_one(
@@ -79,6 +74,7 @@ def _validate_and_collect_files(workspace_root: Path, files: list[str]) -> tuple
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments") or params
     workspace_root = Path(params.get("workspace_root", ""))
@@ -109,7 +105,10 @@ def main() -> None:
             DECISION_REQUEST_KEY: {
                 "message": "\n".join(msg_lines),
                 "choices": [CONFIRM_CHOICE, CANCEL_CHOICE],
-                "payload": {"files": file_list},
+                "payload": {
+                    "files": file_list,
+                    DECISION_PAYLOAD_AUTO_CONFIRM_IF_PLAN_CONFIRMED: True,
+                },
             },
         }
         print(json.dumps(out, ensure_ascii=False))

@@ -1,22 +1,35 @@
 #!/usr/bin/env python3
-"""Scrape a single URL via Playwright. No MCP, no API key."""
+"""Scrape a single URL via Playwright. No MCP, no API key.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
+from constants import CRAWLER_DEFAULT_WAIT_FOR_MS, PROGRESS_URL_DISPLAY_MAX_CHARS
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     url = (args.get("url") or "").strip()
     if not url:
         print(json.dumps({"error": "url is required"}))
         return
-    wait_ms = int(args.get("wait_for", 2000))
+    wait_ms = int(args.get("wait_for", CRAWLER_DEFAULT_WAIT_FOR_MS))
     try:
         from core.ipc import get_reporter
         r = get_reporter()
         if r:
-            r.emit("progress", {"phase": "crawl", "url": url[:80], "display_text": f"Crawling: {url[:80]}"})
+            r.emit(
+                "progress",
+                {
+                    "phase": "crawl",
+                    "url": url[:PROGRESS_URL_DISPLAY_MAX_CHARS],
+                    "display_text": f"Crawling: {url[:PROGRESS_URL_DISPLAY_MAX_CHARS]}",
+                },
+            )
     except Exception:
         pass
     try:

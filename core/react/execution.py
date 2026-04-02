@@ -5,36 +5,27 @@ Handles parallel tool execution, event emission, and human-in-the-loop interacti
 """
 
 import asyncio
-import json
 import logging
 from pathlib import Path
 from typing import Any
 
-from constants import ABORT_RUN_KEY, DECISION_REQUEST_KEY
+from constants import ABORT_RUN_KEY, REACT_SKILL_RESULT_DEBUG_PREVIEW_MAX
 from config import get_config
 from core.react.types import CancelCheck, DecisionWaiter, EventSink
-from core.agent_loop import parse_tool_calls
-from core.executor import execute_skill
+from core.execution.bridge import execute_skill
 from core.path_lock import get_locks_for_tool_call, maybe_acquire_path_locks
 from core.react.context import ImmutableRunContext, MutableRunState
+from core.react.decision_flow import run_two_phase
 from core.react.preparation import HITL_TOOL_NAME
 from core.react.utils import format_skill_observation, save_cancel_checkpoint
+from core.task_plan import (
+    TASK_PLAN_ENTRY_ACTION,
+    TASK_PLAN_SKILL_NAME,
+    execute_task_plan,
+    openai_tools_to_brief,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _tools_to_brief(tools: list) -> list[dict]:
-    """Build tools_brief for todos.plan injection. Returns [{name, description}, ...]."""
-    out = []
-    for t in tools or []:
-        fn = t.get("function") if isinstance(t, dict) else None
-        if not fn:
-            continue
-        name = fn.get("name", "")
-        desc = (fn.get("description") or "")[:120]
-        if name:
-            out.append({"name": name, "description": desc})
-    return out
 
 
 async def execute_tool_calls_batch(
@@ -48,6 +39,7 @@ async def execute_tool_calls_batch(
     run_id: str | None = None,
     decision_waiter: DecisionWaiter = None,
     tools: list | None = None,
+    state: MutableRunState | None = None,
 ) -> tuple[list[str], dict[str, Any] | None, str | None, list[dict], bool]:
     """Execute tool calls in parallel with semaphore.
 
@@ -73,10 +65,17 @@ async def execute_tool_calls_batch(
         name: str, tool: str, arguments: dict, display_summary: str | None
     ) -> tuple[str, dict | None, str | None, list[dict], bool, int]:
         args = dict(arguments)
-        if name == "todos" and tool == "plan" and tools:
-            brief = _tools_to_brief(tools)
+        if name == TASK_PLAN_SKILL_NAME and tool == TASK_PLAN_ENTRY_ACTION and tools:
+            brief = openai_tools_to_brief(tools)
             args["_tools_brief"] = brief
-            logger.info("[react] todos.plan injected _tools_brief count=%d tools=%s", len(brief), [b.get("name") for b in brief])
+            args["_workspace_root"] = str(workspace_root)
+            if event_sink:
+                args["_event_sink"] = event_sink
+            logger.info(
+                "[react] task_plan.plan injected _tools_brief count=%d tools=%s",
+                len(brief),
+                [b.get("name") for b in brief],
+            )
         async with sem:
             return await execute_tool_call(
                 name=name,
@@ -91,6 +90,7 @@ async def execute_tool_calls_batch(
                 event_sink=event_sink,
                 run_id=run_id,
                 decision_waiter=decision_waiter,
+                state=state,
             )
 
     results = await asyncio.gather(*[run_one(n, t, a, d) for n, t, a, d in calls])
@@ -127,68 +127,47 @@ async def execute_tool_call(
     event_sink: EventSink = None,
     run_id: str | None = None,
     decision_waiter: DecisionWaiter = None,
-) -> tuple[str, dict | None, str | None, list[dict], bool]:
-    """Execute a single skill tool call.
-
-    Args:
-        name: Skill name.
-        tool: Action/tool name.
-        arguments: Tool arguments.
-        display_summary: Optional display summary for UI.
-        workspace_root: Workspace root path.
-        session_id: Session identifier.
-        user_id: User identifier.
-        db: Database path.
-        gen_ui_collected: Optional existing gen_ui data.
-        event_sink: Optional event emission callback.
-        run_id: Optional run identifier.
-        decision_waiter: Optional HITL decision waiter.
+    state: MutableRunState | None = None,
+) -> tuple[str, dict | None, str | None, list[dict], bool, int]:
+    """Execute a single tool call (HITL helper, built-in task_plan, or skill subprocess).
 
     Returns:
-        Tuple of (observation, gen_ui, direct_answer, references, abort_run).
+        (observation, gen_ui, direct_answer, references, abort_run, skill_tokens).
     """
     if name == HITL_TOOL_NAME and decision_waiter:
         ret = await handle_hitl_tool_call(name, arguments, decision_waiter, gen_ui_collected)
-        return (*ret, False, 0)  # HITL tool: no abort, no skill tokens
+        return (*ret, False, 0)
+
+    if name == TASK_PLAN_SKILL_NAME:
+        if tool != TASK_PLAN_ENTRY_ACTION:
+            emit_tool_start(event_sink, name, tool, display_summary)
+            err = {
+                "error": f"Unknown action {tool!r} for {TASK_PLAN_SKILL_NAME}",
+                "observation": f"Use {TASK_PLAN_ENTRY_ACTION} only.",
+            }
+            emit_tool_end(event_sink, name, tool, err.get("error"))
+            obs, gu, direct, refs = result_to_observation_and_extras(name, tool, err, gen_ui_collected)
+            return obs, gu, direct, refs, False, 0
+        path_locks = get_locks_for_tool_call(workspace_root, name, tool, arguments)
+        async with maybe_acquire_path_locks(path_locks):
+            emit_tool_start(event_sink, name, tool, display_summary)
+            result = await run_two_phase(
+                arguments,
+                state=state,
+                decision_waiter=decision_waiter,
+                run_once=execute_task_plan,
+            )
+        return _finalize_tool_call(name, tool, result, event_sink, gen_ui_collected, run_id)
 
     path_locks = get_locks_for_tool_call(workspace_root, name, tool, arguments)
     async with maybe_acquire_path_locks(path_locks):
         emit_tool_start(event_sink, name, tool, display_summary)
-        result = await execute_skill(
-            skill_name=name,
-            action=tool,
-            arguments=arguments,
-            workspace_root=workspace_root,
-            session_id=session_id,
-            user_id=user_id,
-            db_path=db if db.exists() else None,
-            event_sink=event_sink,
-            run_id=run_id,
-            agent_id=name,
-        )
 
-        # Two-phase flow: skill requested user confirmation
-        dr = result.get(DECISION_REQUEST_KEY)
-        if isinstance(dr, dict) and dr.get("message") and dr.get("choices"):
-            choice: str
-            if decision_waiter:
-                payload = dr.get("payload")
-                timeout = get_config().react.hitl_timeout_seconds
-                choice = await asyncio.wait_for(
-                    decision_waiter(
-                        str(dr["message"]),
-                        [str(c) for c in dr["choices"]],
-                        payload=payload if isinstance(payload, dict) else None,
-                    ),
-                    timeout=timeout,
-                )
-            else:
-                choice = str(dr["choices"][0]) if dr["choices"] else ""
-            merged = dict(arguments, _decision_choice=choice)
-            result = await execute_skill(
+        async def run_skill(args: dict) -> dict:
+            return await execute_skill(
                 skill_name=name,
                 action=tool,
-                arguments=merged,
+                arguments=args,
                 workspace_root=workspace_root,
                 session_id=session_id,
                 user_id=user_id,
@@ -198,12 +177,30 @@ async def execute_tool_call(
                 agent_id=name,
             )
 
+        result = await run_two_phase(
+            arguments,
+            state=state,
+            decision_waiter=decision_waiter,
+            run_once=run_skill,
+        )
+
+    return _finalize_tool_call(name, tool, result, event_sink, gen_ui_collected, run_id)
+
+
+def _finalize_tool_call(
+    name: str,
+    tool: str,
+    result: dict,
+    event_sink: EventSink,
+    gen_ui_collected: dict | None,
+    run_id: str | None,
+) -> tuple[str, dict | None, str | None, list[dict], bool, int]:
     emit_tool_end(event_sink, name, tool, result.get("error"))
     obs, gu, direct, refs = result_to_observation_and_extras(name, tool, result, gen_ui_collected)
     abort_run = bool(result.get(ABORT_RUN_KEY))
     skill_tokens = int(result.get("tokens", 0) or 0)
     if abort_run:
-        logger.info("[react] skill requested early exit %s.%s run_id=%s", name, tool, run_id)
+        logger.info("[react] early exit %s.%s run_id=%s", name, tool, run_id)
     return obs, gu, direct, refs, abort_run, skill_tokens
 
 
@@ -324,7 +321,12 @@ def result_to_observation_and_extras(
     if result.get("error"):
         logger.warning("skill error: %s.%s -> %s", name, tool, result["error"])
     else:
-        logger.debug("skill result: %s.%s -> %s", name, tool, obs[:200])
+        logger.debug(
+            "skill result: %s.%s -> %s",
+            name,
+            tool,
+            obs[:REACT_SKILL_RESULT_DEBUG_PREVIEW_MAX],
+        )
     gu = result["gen_ui"] if result.get("gen_ui") else gen_ui_collected
     ans = result.get("answer")
     direct_answer = (ans.strip() if isinstance(ans, str) and ans.strip() else None)

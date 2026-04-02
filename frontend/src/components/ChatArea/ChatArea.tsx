@@ -6,7 +6,7 @@ import { MessageList } from '../MessageList/MessageList'
 import { InputArea } from '../InputArea/InputArea'
 import { formatSessionId } from '../../utils/session'
 import type { Message as MessageType, Skill } from '../../types'
-import type { LiveTodo } from '../../hooks/useChat'
+import type { InvestigationReport, LiveTodo } from '../../hooks/useChat'
 
 export interface LiveEvent {
   type: string
@@ -22,8 +22,9 @@ interface ChatAreaProps {
   sessionStatus: string | null
   liveTokens: number | null
   liveEvents?: LiveEvent[]
-  liveTodos?: { id: string; title: string; status: string }[]
   liveTodos?: LiveTodo[]
+  liveThinking?: string[]
+  investigationReport?: InvestigationReport | null
   chatContainerRef: React.RefObject<HTMLDivElement | null>
   chatEndRef: React.RefObject<HTMLDivElement | null>
   showScrollToBottom: boolean
@@ -43,13 +44,19 @@ interface ChatAreaProps {
   setFileQuery: React.Dispatch<React.SetStateAction<string>>
   sendMode: 'async' | 'sync'
   setSendMode: React.Dispatch<React.SetStateAction<'async' | 'sync'>>
-  onSend: () => void
+  onSend: () => void | Promise<void>
+  pendingWorkspaceFiles?: File[]
+  onAddPendingWorkspaceFiles?: (files: File[]) => void
+  onRemovePendingWorkspaceFile?: (index: number) => void
+  attachmentUploading?: boolean
+  attachmentHint?: string | null
   onCancel?: () => void
   onResume?: () => void
+  onNewSession?: () => void
   lastCancelledRunId?: string | null
   runId?: string | null
-  onKeyDown: (e: React.KeyboardEvent) => void
-  inputRef: React.RefObject<HTMLInputElement | null>
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
+  inputRef: React.RefObject<HTMLTextAreaElement | null>
 }
 
 export function ChatArea({
@@ -62,6 +69,8 @@ export function ChatArea({
   liveTokens,
   liveEvents = [],
   liveTodos = [],
+  liveThinking = [],
+  investigationReport = null,
   chatContainerRef,
   chatEndRef,
   showScrollToBottom,
@@ -82,8 +91,14 @@ export function ChatArea({
   sendMode,
   setSendMode,
   onSend,
+  pendingWorkspaceFiles = [],
+  onAddPendingWorkspaceFiles,
+  onRemovePendingWorkspaceFile,
+  attachmentUploading = false,
+  attachmentHint = null,
   onCancel,
   onResume,
+  onNewSession,
   lastCancelledRunId,
   runId,
   onKeyDown,
@@ -92,10 +107,12 @@ export function ChatArea({
   return (
     <div className="chat-area">
       <div className="chat-session-bar">
-        <span className="session-id-label">Session</span>
-        <code className="session-id-value">
-          {formatSessionId(currentSessionId)}
-        </code>
+        <div className="chat-content-max chat-session-bar__inner">
+          <span className="session-id-label">Session</span>
+          <code className="session-id-value">
+            {formatSessionId(currentSessionId)}
+          </code>
+        </div>
       </div>
       <div
         className="chat-container"
@@ -109,6 +126,8 @@ export function ChatArea({
           liveTokens={liveTokens}
           liveEvents={liveEvents}
           liveTodos={liveTodos}
+          liveThinking={liveThinking}
+          investigationReport={investigationReport}
           chatEndRef={chatEndRef}
         />
       </div>
@@ -139,10 +158,17 @@ export function ChatArea({
         sendMode={sendMode}
         setSendMode={setSendMode}
         allowBackground={allowBackground}
-        loading={loading}
+        loading={loading || attachmentUploading}
         onSend={onSend}
+        onAddPendingWorkspaceFiles={onAddPendingWorkspaceFiles}
+        attachmentUploading={attachmentUploading}
+        pendingAttachmentCount={pendingWorkspaceFiles.length}
+        pendingAttachmentNames={pendingWorkspaceFiles.map((f) => f.name)}
+        onRemovePendingWorkspaceFile={onRemovePendingWorkspaceFile}
+        attachmentHint={attachmentHint}
         onCancel={onCancel}
         onResume={onResume}
+        onNewSession={onNewSession}
         lastCancelledRunId={lastCancelledRunId}
         runId={runId}
         onKeyDown={onKeyDown}

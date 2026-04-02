@@ -1,31 +1,17 @@
-"""
-Validation utilities for primitive skills.
-
-Provides parameter validation helpers to ensure inputs meet requirements
-before processing.
-"""
+"""Parameter validation helpers for primitive skills."""
 
 from typing import Any
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 def validate_required(params: dict, *keys: str) -> list[str]:
-    """Validate that required keys are present and non-empty in params.
+    """Return keys that are missing or blank string in ``params``.
 
     Args:
-        params: Parameters dict to validate.
-        *keys: Required key names.
+        params (dict): Skill argument dict.
+        *keys (str): Required field names.
 
     Returns:
-        List of missing or empty key names. Empty list if all present.
-
-    Example:
-        >>> params = {"name": "test", "value": "", "count": 5}
-        >>> validate_required(params, "name", "value", "missing")
-        ['value', 'missing']
+        list[str]: Missing or empty keys; empty when all valid.
     """
     missing = []
     for key in keys:
@@ -41,26 +27,16 @@ def validate_int_range(
     max_val: int | None = None,
     default: int | None = None,
 ) -> int | None:
-    """Validate and convert value to integer within range.
+    """Parse ``value`` as int and clamp to ``[min_val, max_val]`` when set.
 
     Args:
-        value: Value to validate and convert.
-        min_val: Minimum allowed value (inclusive).
-        max_val: Maximum allowed value (inclusive).
-        default: Default value if conversion fails.
+        value (Any): Input to coerce (e.g. string from JSON).
+        min_val (int | None): Inclusive lower bound.
+        max_val (int | None): Inclusive upper bound.
+        default (int | None): Returned on parse failure or out-of-range.
 
     Returns:
-        Validated integer or default if invalid.
-
-    Example:
-        >>> validate_int_range("50", 0, 100, 10)
-        50
-        
-        >>> validate_int_range("invalid", 0, 100, 10)
-        10
-        
-        >>> validate_int_range("200", 0, 100, 10)  # Exceeds max
-        10
+        int | None: Parsed int inside range, else ``default``.
     """
     try:
         num = int(value)
@@ -74,38 +50,31 @@ def validate_int_range(
 
 
 def validate_choice(value: Any, choices: list, default: Any = None) -> Any:
-    """Validate that value is one of allowed choices.
+    """Return ``value`` if it is in ``choices``; otherwise ``default``.
 
     Args:
-        value: Value to validate.
-        choices: List of allowed values.
-        default: Default value if not in choices.
+        value (Any): Candidate value.
+        choices (list): Allowed values.
+        default (Any): Fallback when ``value`` is not in ``choices``.
 
     Returns:
-        Value if in choices, otherwise default.
-
-    Example:
-        >>> validate_choice("asc", ["asc", "desc"], "asc")
-        'asc'
-        
-        >>> validate_choice("invalid", ["asc", "desc"], "asc")
-        'asc'
+        Any: ``value`` or ``default``.
     """
     return value if value in choices else default
 
 
 def sanitize_string(value: Any, max_length: int = 1000) -> str:
-    """Sanitize string input.
+    """Strip and truncate string input.
 
     Args:
-        value: Value to sanitize.
-        max_length: Maximum allowed length.
+        value (Any): Coerced with ``str``; ``None`` becomes ``""``.
+        max_length (int): Maximum returned length.
 
     Returns:
-        Sanitized string (truncated if too long).
+        str: Sanitized text.
     """
     if value is None:
         return ""
-    
+
     text = str(value).strip()
     return text[:max_length] if len(text) > max_length else text

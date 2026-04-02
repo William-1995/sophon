@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Time format - format timestamp to string."""
+"""Time format - format timestamp to string.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
 from datetime import datetime, timezone
@@ -36,6 +40,7 @@ def _normalize_fmt(fmt: str) -> str:
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     ts = (args.get("timestamp") or args.get("ts") or args.get("original", "")).strip()

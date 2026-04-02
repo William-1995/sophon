@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Write data to Excel/CSV files (paths default to workspace/<user_id>)."""
+"""Write data to Excel/CSV files (paths default to workspace/<user_id>).
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import csv
 import json
 import sys
 from pathlib import Path
+
+from core.execution.arg_coerce import MISSING_WORKBOOK_PATH_HELP, workbook_path_from_tool_stdin
 
 try:
     import openpyxl
@@ -64,12 +70,12 @@ def write_excel(file_path: Path, data: list, sheet_name: str = "Sheet1") -> dict
 def main() -> None:
     params = json.load(sys.stdin)
     args = params.get("arguments") or params
-    file_path = args.get("file", "")
+    file_path = workbook_path_from_tool_stdin(params)
     data = args.get("data", params.get("data", []))
     sheet = args.get("sheet", params.get("sheet", "Sheet1"))
 
     if not file_path:
-        print(json.dumps({"error": "file parameter is required"}))
+        print(json.dumps({"error": MISSING_WORKBOOK_PATH_HELP}, ensure_ascii=False))
         return
 
     if not data:

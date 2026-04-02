@@ -1,4 +1,4 @@
-"""Emotion segment analysis - enqueue and run async task."""
+"""Background enqueue and async runner for emotion segment analysis."""
 
 import asyncio
 import logging
@@ -23,7 +23,15 @@ def enqueue_segment_analysis(
     assistant_message: str,
     start_at: float | None = None,
 ) -> None:
-    """Schedule async emotion analysis for the completed run."""
+    """Schedule async emotion analysis when enabled and the DB exists.
+
+    Args:
+        db_path (Path): Application SQLite path.
+        session_id (str): Conversation session.
+        user_message (str): User text in the segment.
+        assistant_message (str): Assistant reply in the segment.
+        start_at (float | None): Segment start epoch; default is a short lookback window.
+    """
     cfg = get_config()
     if not cfg.emotion.enabled:
         return
@@ -52,7 +60,16 @@ async def _run_segment_analysis(
     start_at: float,
     end_at: float,
 ) -> None:
-    """Execute emotion analysis and persist result."""
+    """Call ``analyze_segment``, persist to ``db.emotion``, optionally broadcast SSE.
+
+    Args:
+        db_path (Path): SQLite path.
+        session_id (str): Session analyzed.
+        user_message (str): User text anchor.
+        assistant_message (str): Assistant text anchor.
+        start_at (float): Segment start epoch.
+        end_at (float): Segment end epoch.
+    """
     try:
         user_summary, system_summary, emotion_label = await analyze_segment(
             db_path=db_path,
@@ -80,8 +97,8 @@ async def _run_segment_analysis(
         )
         logger.debug("[emotion] segment saved session_id=%s emotion=%s", session_id, emotion_label)
         try:
-            from api.event_types import EMOTION_UPDATED
-            from api.state import broadcast_event
+            from api.schemas.event_types import EMOTION_UPDATED
+            from services.state import broadcast_event
             broadcast_event({"type": EMOTION_UPDATED, "emotion_label": emotion_label, "session_id": session_id})
         except Exception:
             pass

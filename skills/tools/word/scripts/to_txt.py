@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Convert Word (.docx) to plain text (.txt). Optional: write to output_path."""
+"""Convert Word (.docx) to plain text (.txt). Optional: write to output_path.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import base64
 import json
 import sys
 from pathlib import Path
-
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-_SKILL_DIR = _SCRIPTS_DIR.parent
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from parse import _ensure_in_workspace, _parse_word_bytes
 
@@ -24,6 +23,7 @@ def _to_txt_content(paragraphs: list[str], tables: list[list[list[str]]]) -> str
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     workspace_root = Path(params.get("workspace_root", ""))

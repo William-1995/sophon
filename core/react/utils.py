@@ -10,18 +10,17 @@ import re
 from typing import Any
 
 from constants import (
+    CHECKPOINT_QUESTION_PREVIEW_MAX,
     OBSERVATIONS_COMBINED_MAX,
     OBSERVATION_BRIEF_MAX,
     OBSERVATIONS_KEEP_FULL_TAIL,
+    REACT_CANCEL_CHECKPOINT_OBS_PREVIEW_MAX,
 )
 
 logger = logging.getLogger(__name__)
 
 # Characters of composite body injected into system prompt for tool guidance
 _COMPOSITE_BODY_INJECT_MAX = 1500
-
-# Max chars of observations to store in cancel checkpoint
-_CHECKPOINT_OBS_PREVIEW_LEN = 2000
 
 # Prefix when observations are truncated (keep tail for LLM context)
 _TRUNCATE_PREFIX = "...[truncated]\n"
@@ -125,7 +124,7 @@ def save_cancel_checkpoint(
     """
     try:
         from db.logs import insert as log_insert
-        obs_preview = "\n".join(observations)[:_CHECKPOINT_OBS_PREVIEW_LEN]
+        obs_preview = "\n".join(observations)[:REACT_CANCEL_CHECKPOINT_OBS_PREVIEW_MAX]
         if len(observations) and len(obs_preview) < sum(len(o) for o in observations):
             obs_preview += "..."
         log_insert(
@@ -136,7 +135,7 @@ def save_cancel_checkpoint(
             metadata={
                 "run_id": run_id,
                 "round": round_num,
-                "question_preview": (question or "")[:500],
+                "question_preview": (question or "")[:CHECKPOINT_QUESTION_PREVIEW_MAX],
                 "observations_preview": obs_preview,
                 "total_tokens": total_tokens,
             },

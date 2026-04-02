@@ -20,6 +20,7 @@ Example:
     )
 """
 
+from config.defaults import DEFAULT_MODEL
 from constants import LLM_TIMEOUT
 from providers.base import BaseProvider
 from providers.deepseek import DeepSeekProvider
@@ -40,7 +41,7 @@ def get_provider(name: str | None = None, model: str | None = None, **kwargs) ->
 
     Args:
         name: Provider name ('deepseek', 'qwen', 'ollama').
-        model: Model identifier (e.g., 'qwen-plus', 'deepseek-chat').
+        model: Model identifier.
             If name is not provided, the provider is inferred from the model name.
         **kwargs: Additional arguments passed to the provider constructor.
 
@@ -56,7 +57,7 @@ def get_provider(name: str | None = None, model: str | None = None, **kwargs) ->
         >>> provider = get_provider("ollama", model="llama3.2")
     """
     if name is None:
-        name = _model_to_provider(model or "deepseek-chat")
+        name = _model_to_provider(model or DEFAULT_MODEL)
 
     # Default timeout for all providers, unless explicitly overridden.
     if "timeout" not in kwargs:

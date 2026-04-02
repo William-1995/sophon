@@ -2,13 +2,14 @@
  * OrbPanel - sessions tree, recent tasks, skills, workspace.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   API_BASE,
   EMOTION_RING_COLORS,
   EMOTION_RING_DEFAULT,
 } from '../../constants'
 import { formatSessionId } from '../../utils/session'
+import { downloadWorkspaceFiles } from '../../api/resources'
 import { OrbPagination } from './OrbPagination'
 import type { TreeRoot, ChildSession, Skill } from '../../types'
 
@@ -94,12 +95,27 @@ export function OrbPanel(props: OrbPanelProps) {
   const [profileImageFailed, setProfileImageFailed] = useState(false)
   const showProfileImage = !profileImageFailed
 
+  const [selectedWorkspaceFiles, setSelectedWorkspaceFiles] = useState<string[]>([])
+
   const ringColor =
     latestEmotion && EMOTION_RING_COLORS[latestEmotion.toLowerCase()]
       ? EMOTION_RING_COLORS[latestEmotion.toLowerCase()]
       : latestEmotion
         ? EMOTION_RING_DEFAULT
         : undefined
+
+  const isWorkspaceSelected = (file: string) => selectedWorkspaceFiles.includes(file)
+
+  const toggleWorkspaceFile = (file: string) => {
+    setSelectedWorkspaceFiles((prev) =>
+      prev.includes(file) ? prev.filter((item) => item !== file) : [...prev, file]
+    )
+  }
+
+  const downloadSelectedWorkspaceFiles = async () => {
+    if (selectedWorkspaceFiles.length === 0) return
+    await downloadWorkspaceFiles(selectedWorkspaceFiles, 'workspace-files.zip')
+  }
 
   const pagination = (
     page: number,
@@ -295,11 +311,42 @@ export function OrbPanel(props: OrbPanelProps) {
           </ul>
           {pagination(safeSkillsPage, skillsPageCount, setOrbSkillsPage)}
           <h3 className="orb-section">Workspace</h3>
-          <ul className="file-list">
+          <ul className="file-list orb-workspace-list">
             {paginatedWorkspace.map((f) => (
-              <li key={f}>{f}</li>
+              <li key={f}>
+                <button
+                  type="button"
+                  className={`orb-tree-child orb-workspace-item ${
+                    isWorkspaceSelected(f) ? 'active' : ''
+                  }`}
+                  onClick={() => toggleWorkspaceFile(f)}
+                >
+                  <span className="orb-tree-child-title">{f}</span>
+                  <span className="orb-tree-child-status">
+                    {isWorkspaceSelected(f) ? 'selected' : 'select'}
+                  </span>
+                </button>
+              </li>
             ))}
           </ul>
+          <div className="orb-workspace-actions">
+            <button
+              type="button"
+              className="skill-btn"
+              onClick={downloadSelectedWorkspaceFiles}
+              disabled={selectedWorkspaceFiles.length === 0}
+            >
+              Download selected ({selectedWorkspaceFiles.length})
+            </button>
+            <button
+              type="button"
+              className="skill-btn"
+              onClick={() => setSelectedWorkspaceFiles([])}
+              disabled={selectedWorkspaceFiles.length === 0}
+            >
+              Clear
+            </button>
+          </div>
           {pagination(
             safeWorkspacePage,
             workspacePageCount,

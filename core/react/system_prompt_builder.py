@@ -7,16 +7,18 @@ Injects user language detection and response context.
 import json
 import re
 
+from . import prompt_fragments as pf
+
 
 def _build_user_response_context(question: str) -> dict:
-    """Infer user's language and format from the question for response guidance."""
+    """Infer user's language and attach static tone/format hints for the reply."""
     q = (question or "").strip()
     has_cjk = bool(re.search(r"[\u4e00-\u9fff]", q))
     detected_lang = "zh" if has_cjk else "en"
     return {
         "language": detected_lang,
-        "tone": "helpful and concise",
-        "format": "plain text only, no markdown code blocks unless explicitly requested",
+        "tone": pf.USER_CONTEXT_TONE,
+        "format": pf.USER_CONTEXT_FORMAT,
     }
 
 
@@ -28,21 +30,11 @@ def _system_prompt_with_tools(
     multi_part: bool = False,
 ) -> str:
     """Build base system prompt when tools are available."""
-    base = (
-        "You are Sophon, an AI assistant. Do not disclose base model information to users. "
-        "Reply in plain text only. Do not output JSON. "
-        "Never fabricate or invent information. Only answer based on actual tool outputs and verified facts. "
-        "If you lack the data to answer, say so instead of guessing. "
-    )
+    base = f"{pf.BASE_ASSISTANT_WITH_TOOLS}{pf.EXEC_DISCIPLINE}"
     if multi_part:
-        base += (
-            "This is a multi-part request. Produce a visible plan first using the appropriate tool; after the user confirms, execute each step. "
-            "Do NOT answer any part from memory or guesswork—each sub-task requires a tool call. Do NOT give a final answer until ALL sub-tasks are completed. "
-        )
+        base += pf.MULTIPART_STRICT
     else:
-        base += (
-            "When the user asks multiple distinct things in one message, treat each as a separate sub-task: decompose, address each part with tools. Use a planning tool for complex coordination when available. "
-        )
+        base += pf.DECOMPOSE_SUBTASKS
     base += f" Current time: {current_time}"
     if composite:
         body = composite.get("body", "")
@@ -61,9 +53,7 @@ def _system_prompt_without_tools(
     """Build base system prompt when no tools are available."""
     ctx_block = f"\n\nResponse context (follow strictly): {json.dumps(user_response_context)}"
     return (
-        "You are Sophon, an AI assistant. Do not disclose base model information to users. "
-        "Reply in plain text only. Do not output JSON. "
-        "Never fabricate or invent information. Only answer based on verified facts. If you lack the data, say so instead of guessing. "
+        f"{pf.BASE_ASSISTANT_WITHOUT_TOOLS}"
         f"Current time: {current_time}"
         f"{ctx_block}"
     )

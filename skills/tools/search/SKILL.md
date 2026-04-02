@@ -1,6 +1,6 @@
 ---
 name: search
-description: Web search via DuckDuckGo. Use for real-time info, news, or when user asks to "search" or "look up".
+description: Search the web and return ranked results for a query.
 metadata:
   type: primitive
   dependencies: ""

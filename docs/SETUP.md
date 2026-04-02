@@ -106,7 +106,7 @@ cd frontend && npm install && cd ..
 cp .env.example .env
 # Edit .env for LLM (DeepSeek / Qwen / Ollama)
 
-python start.py              # Backend http://localhost:8080
+python start.py              # Backend (port from config.DEFAULT_API_PORT unless PORT is set)
 # In another terminal:
 cd frontend && npm run dev   # Frontend http://localhost:5173
 ```

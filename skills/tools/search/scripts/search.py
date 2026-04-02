@@ -1,10 +1,22 @@
 #!/usr/bin/env python3
-"""Web search via DuckDuckGo. No API key."""
+"""Web search via DuckDuckGo. No API key.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
 
+from constants import (
+    PROGRESS_SEARCH_QUERY_DISPLAY_MAX_CHARS,
+    SEARCH_CAP_MAX_RESULTS,
+    SEARCH_DEFAULT_MAX_RESULTS,
+    SEARCH_MIN_MAX_RESULTS,
+)
+
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     query = (args.get("query") or "").strip()
@@ -12,11 +24,15 @@ def main() -> None:
         from core.ipc import get_reporter
         r = get_reporter()
         if r:
-            r.emit("progress", {"phase": "search", "query": query[:50], "display_text": f"Searching: {query[:60]}"})
+            q_prev = query[:PROGRESS_SEARCH_QUERY_DISPLAY_MAX_CHARS]
+            r.emit(
+                "progress",
+                {"phase": "search", "query": q_prev, "display_text": f"Searching: {q_prev}"},
+            )
     except Exception:
         pass
-    num = int(args.get("num", params.get("num", 5)))
-    num = max(1, min(10, num))
+    num = int(args.get("num", params.get("num", SEARCH_DEFAULT_MAX_RESULTS)))
+    num = max(SEARCH_MIN_MAX_RESULTS, min(SEARCH_CAP_MAX_RESULTS, num))
     if not query:
         print(json.dumps({"error": "query is required"}))
         return

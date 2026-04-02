@@ -6,8 +6,7 @@ Lightweight LLM call to select which skills to load for a question.
 
 import json
 import logging
-from typing import Any
-
+from constants import SKILL_BRIEF_IN_PROMPT_MAX_CHARS
 from providers import BaseProvider
 
 logger = logging.getLogger(__name__)
@@ -52,22 +51,25 @@ async def select_skills_for_question(
 
     Returns:
         Tuple of (selected_skill_names, tokens_used, multi_step).
-        - multi_step: True when the request has multiple distinct sub-tasks that benefit from todos.plan
-          (e.g. 'search X and write to file Y'). False for single coherent questions even with 'and'
-          (e.g. 'What is Python and how to install it' = one research task).
+        - multi_step: True only when human plan approval is needed (picker should include task_plan). False when
+          the user gave an executable multi-step spec—use concrete skills without task_plan.
     """
     if not skills_brief:
         return [], 0, False
     skill_list = "\n".join(
-        f"- {s['skill_name']}: {s['skill_description'][:180]}..." for s in skills_brief
+        f"- {s['skill_name']}: {s['skill_description'][:SKILL_BRIEF_IN_PROMPT_MAX_CHARS]}..."
+        for s in skills_brief
     )
     sys_prompt = (
         "Pick ALL skills needed to fully answer every part of the question. "
         'Reply with JSON only: {"skills": ["skill_name1"], "multi_step": true|false}. '
         "Use exact skill_name from the list. For compound questions, select multiple skills. "
-        "multi_step: true when the request has multiple distinct sub-tasks that should be planned separately "
-        "(e.g. 'search for X and summarize', 'do A, B, and C'). "
-        "multi_step: false for single coherent questions (e.g. 'What is X and why', 'What is Python and how to install it')."
+        "If the message has no substantive task, prefer skills: []. "
+        "multi_step: true ONLY when a human should review/approve a plan before execution (then include \"task_plan\" in skills). "
+        "multi_step: false when the user already gave an executable spec (paths, URLs, output shape, formats)—even if many steps; "
+        "the agent should call tools directly without pausing for confirmation. "
+        "Choose names only from the list below, using each line's description—do not invent capabilities. "
+        "false also for single coherent Q&A (e.g. 'What is X and why')."
     )
     user_prompt = f"Question: {question}\n\nAvailable skills:\n{skill_list}\n\nWhich skill(s) and multi_step? JSON only."
     tokens = 0

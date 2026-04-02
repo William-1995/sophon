@@ -1,13 +1,11 @@
 # Filesystem Skill
 
-List, read, write, delete, rename files in workspace.
-
+List, write, delete, rename files in the workspace. Use this skill when no more specific skill applies.
 ## Capabilities
 
 - **list**: List files/dirs, glob filter, recursive
-- **read**: Read file (offset, limit, tail, regex)
-- **read_skill_readme**: Read a skill's README.md (install guides, dependencies)
-- **read_docs**: Read Sophon project docs (SETUP, ARCHITECTURE, API, create-skill)
+
+- **read**: Plain-text files only (md, txt, json, yaml, code). Not for spreadsheets or PDF/Word binaries
 - **delete**: Delete files (HITL confirm)
 - **rename**: Rename file
 - **count**: Count files/dirs
@@ -27,3 +25,4 @@ None (stdlib).
 
 - Paths relative to workspace root
 - Access outside workspace is blocked
+- Use the `docs` skill for Sophon docs and skill READMEs

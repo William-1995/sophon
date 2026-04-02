@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-"""Trace query - query traces from SQLite."""
+"""Trace query - query traces from SQLite.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
 import time
 from pathlib import Path
 
-# Add skill root for constants
-_skill_root = Path(__file__).resolve().parent.parent
-if str(_skill_root) not in sys.path:
-    sys.path.insert(0, str(_skill_root))
+from common.db_utils import resolve_db_path
 
-from constants import DB_FILENAME
 
 
 def _ts_to_date(ts) -> str | None:
-    """Format Unix timestamp to YYYY-MM-DD HH:MM:SS."""
+    """Format Unix epoch seconds as local ``YYYY-MM-DD HH:MM:SS``.
+
+    Args:
+        ts: Epoch seconds or numeric string; ``None`` yields ``None``.
+
+    Returns:
+        str | None: Formatted time, or ``None`` if invalid.
+    """
     if ts is None:
         return None
     try:
@@ -23,17 +30,11 @@ def _ts_to_date(ts) -> str | None:
         return None
 
 
-def _resolve_db_path(params: dict) -> Path:
-    p = params.get("db_path")
-    if p:
-        return Path(p)
-    return Path(params.get("workspace_root", "")) / DB_FILENAME
-
-
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
-    db_path = _resolve_db_path(params)
+    db_path = resolve_db_path(params)
     session_id = args.get("session_id", params.get("session_id"))
     if session_id is not None and isinstance(session_id, str):
         session_id = session_id.strip() or None

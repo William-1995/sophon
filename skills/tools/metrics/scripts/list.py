@@ -1,28 +1,20 @@
 #!/usr/bin/env python3
-"""Metrics list - list metric names."""
+"""Metrics list - list metric names.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
-from pathlib import Path
+from common.db_utils import resolve_db_path
 
-# Add skill root for constants
-_skill_root = Path(__file__).resolve().parent.parent
-if str(_skill_root) not in sys.path:
-    sys.path.insert(0, str(_skill_root))
-
-from constants import DB_FILENAME
 from db.metrics import list_names
 
 
-def _resolve_db_path(params: dict) -> Path:
-    p = params.get("db_path")
-    if p:
-        return Path(p)
-    return Path(params.get("workspace_root", "")) / DB_FILENAME
-
-
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
-    db_path = _resolve_db_path(params)
+    db_path = resolve_db_path(params)
     if not db_path.exists():
         print(json.dumps({"names": []}))
         return

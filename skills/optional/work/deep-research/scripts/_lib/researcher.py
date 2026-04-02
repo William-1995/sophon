@@ -1,16 +1,12 @@
-"""
-Researcher - For each sub-question: search + LLM denoise URLs + LLM select top URLs + crawler fetch in parallel.
+"""Execute the research stage: search, URL filtering/selection, parallel crawl.
 
-Produces a list of ResearchNote, one per sub-question.
-
-Refactored to use _prompts.py, _schemas.py, and _urls.py.
+Produces one ``ResearchNote`` per ``SubQuestion``. Uses ``_prompts``, ``_schemas``, and ``_urls``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-
 from _schemas import ResearchNote, Source
 from _urls import llm_denoise_urls, llm_select_urls, parse_search_results
 from planner import SubQuestion
@@ -23,7 +19,16 @@ async def _fetch_via_crawler(
     execute_tool,
     wait_for: int = 3000,
 ) -> tuple[str, str]:
-    """Fetch URL via crawler.scrape. Returns (title_or_url, full_text). On error returns ('', '')."""
+    """Fetch one URL via the ``crawler.scrape`` tool.
+
+    Args:
+        url (str): Target page.
+        execute_tool: Async callable used to invoke nested skills.
+        wait_for (int): Playwright wait ms passed to the crawler.
+
+    Returns:
+        tuple[str, str]: ``(url, content)`` on success; ``("", "")`` on error or empty result.
+    """
     try:
         result = await execute_tool("crawler", "scrape", {"url": url, "wait_for": wait_for})
         if result.get("error"):

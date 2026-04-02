@@ -8,7 +8,8 @@ import logging
 from typing import Any
 
 from constants import SUMMARIZE_MSG
-from core.agent_loop import evaluate_observations
+from core.agent_loop_helpers import evaluate_observations
+from core.react.question_heuristics import question_suggests_tool_execution
 from core.react.context import ImmutableRunContext, MutableRunState
 from core.react.utils import (
     emit_progress,
@@ -125,8 +126,13 @@ async def append_round_and_evaluate(
     content = resp.get("content", "")
     ctx.messages.append({"role": "assistant", "content": content})
     results_content = truncate_observations_for_llm(state.observations)
+    strict_ev = question_suggests_tool_execution(ctx.question)
     satisfied, eval_tok = await evaluate_observations(
-        ctx.question, state.observations, provider, multi_part=ctx.multi_part
+        ctx.question,
+        state.observations,
+        provider,
+        multi_part=ctx.multi_part,
+        strict_tool_evidence=strict_ev,
     )
     state.total_tokens += eval_tok
     if eval_tok > 0 and ctx.db.exists():

@@ -24,7 +24,7 @@ React Frontend ←──→ FastAPI ←──→ ReAct Orchestrator ←──→
 | `providers/` | LLM provider abstractions |
 | `skills/primitives/` | Core building blocks (filesystem, memory, time) |
 | `skills/tools/` | pdf, word, excel, fetch, search, crawler, log-analyze, trace, metrics |
-| `skills/optional/work/` | Work sub-agents (deep-research, troubleshoot, excel-ops) |
+| `skills/optional/work/` | Work sub-agents (deep-research, troubleshoot) |
 | `skills/optional/entertainment/` | Entertainment features (emotion-awareness) |
 | `frontend/` | React + TypeScript UI |
 | `speech/` | Local speech-to-text |
@@ -38,7 +38,7 @@ React Frontend ←──→ FastAPI ←──→ ReAct Orchestrator ←──→
 |------|------|-------------|
 | **Primitives** | `skills/primitives/` | Core building blocks: filesystem, memory, time. Run as isolated subprocesses. |
 | **Tools** | `skills/tools/` | pdf, word, excel, fetch, search, crawler, log-analyze, trace, metrics. |
-| **Optional/Work** | `skills/optional/work/` | Sub-agents with own ReAct loops: deep-research, troubleshoot, excel-ops. |
+| **Optional/Work** | `skills/optional/work/` | Sub-agents with own ReAct loops: deep-research, troubleshoot. |
 | **Optional/Entertainment** | `skills/optional/entertainment/` | e.g. emotion-awareness. |
 
 **Scan order**: `primitives` → `features` → `tools` → `optional` (optional uses `optional/<channel>/*`).
@@ -63,10 +63,10 @@ This allows your skill to invoke `search`, `crawler`, and even `deep-research` a
 Optional/Work skills can call other skills:
 ```
 Main Agent
-└── excel-ops (depends on excel, search, crawler)
-    ├── excel.read / excel.structure
-    ├── search.search
-    └── crawler.scrape
+└── workflow (depends on pdf, word, excel, fetch, search, crawler, filesystem)
+    ├── excel.read / ingest_file
+    ├── search.search / scrape_url
+    └── filesystem.save_file
 ```
 
 **DAG Validation**
@@ -82,7 +82,7 @@ Sophon validates the skill dependency graph at load time:
 |----------|-------------|
 | **Research + Analysis** | `deep-research` → `search`, `crawler`, `filesystem`, `memory` |
 | **Document Q&A** | `pdf.structure` → `pdf.parse` with page_range; `word.parse` → `word.to_markdown` |
-| **Workflow automation** | `excel-ops` → `excel`, `search`, `crawler`; output to `filesystem` |
+| **Workflow automation** | `workflow` → `excel`, `search`, `crawler`, `filesystem`; structured saves |
 
 **Benefits**
 
@@ -111,15 +111,46 @@ metadata:
 ---
 ```
 
+## Main agent vs skills: protocol and events (no hardcoding)
+
+The orchestrator must **not** encode knowledge of specific skill names or tools (e.g. “if `filesystem.delete` then …”). Any skill may be removed; the platform should still run. Coordination uses **contracts** and **events**, not branching on skill identity.
+
+| Mechanism | Role |
+|-----------|------|
+| **JSON I/O** | stdin/stdout schema, optional fields (`answer`, `references`, `__decision_request`, `_abort_run`, …). Defined in `constants.py` and docs. |
+| **Events (IPC)** | Skills emit structured events (`type` + payload). The main loop reacts only to **event type** (see `SophonSkillEventType` in `constants.py`), not to which skill emitted them. |
+| **`__decision_request` payload** | Optional protocol keys, e.g. `DECISION_PAYLOAD_AUTO_CONFIRM_IF_PLAN_CONFIRMED`: executor applies generic rules when run state matches (e.g. after `PLAN_CONFIRMED`), without naming skills. |
+| **Enums** | Use `SophonSkillEventType` (and similar) instead of magic strings in Python so event types stay centralized and grep-friendly. |
+
+**Example flow (plan → delete, one user confirm):**
+
+1. A planning skill emits `SophonSkillEventType.PLAN_CONFIRMED` after the user approves the plan (via existing HITL on that skill).
+2. `run_react` wraps `event_sink` so that event sets `MutableRunState.plan_confirmed`.
+3. A delete-related skill returns `__decision_request` whose `payload` includes `auto_confirm_if_plan_confirmed: true` (constant `DECISION_PAYLOAD_AUTO_CONFIRM_IF_PLAN_CONFIRMED`).
+4. `execution.py` sees `plan_confirmed` + payload flag and supplies the confirming `_decision_choice` without a second modal—**no checks for skill name or tool name**.
+
+**System prompt** stays abstract: it must not describe individual skills; skill-specific behavior lives in `SKILL.md` and optional protocol fields.
+
+**Path locks** remain adapter-based (`core/adapters/`) so only opt-in skills register path extractors.
+
+**Skill subprocess `PYTHONPATH`:** Built once in `core/runtime_paths.py` and applied in `executor_subprocess.build_run_env(..., script_path=...)`. Order includes `scripts/_lib` (if present), `<skill>/_lib`, the skill’s `scripts/` directory (for sibling imports such as `from parse import …`), the skill directory, repo root, and `skills/primitives`. Skill scripts should not mutate `sys.path` for these; CLI entrypoints use `bootstrap_paths.activate()` at the repo root.
+
+**Task planning (built-in):** `task_plan` is not a filesystem skill. It lives in `core/task_plan/` (prompts, parse, runner). ReAct injects `_tools_brief` from the current OpenAI tool list only for `task_plan.plan` so the planner sees available tools—coupling is localized to `execution.execute_tool_calls_batch` + the built-in tool name constant. Batch-oriented tasks (lists of URLs, rows, files, or records) now carry a batch contract through workflow state and prompts so the orchestrator can keep per-item scope, aggregate progress, and avoid collapsing a collection into a single sample.
+
+**Workflow internals:** `core/cowork/workflow/engine.py` stays focused on orchestration and step execution. Batch detection / progress aggregation / artifact validation live in `analysis.py`, while DB serialization / deserialization lives in `persistence.py`. The frontend consumes `batch_progress` and artifact paths as protocol fields; it does not infer batch semantics or file types on its own.
+
+**Workflow internals:** `core/cowork/workflow/engine.py` stays focused on orchestration and step execution. Batch detection / progress aggregation / artifact validation live in `analysis.py`, while DB serialization / deserialization lives in `persistence.py`. The frontend consumes `batch_progress` and artifact paths as protocol fields; it does not infer batch semantics or file types on its own.
+
 ## Agent Loop (ReAct Pattern)
 
 Located in `core/react/`:
 
 | Module | Responsibility |
 |--------|----------------|
-| `main.py` | Main orchestration loop; cancel/resume; `abort_run` handling |
+| `core/react/main.py` | Main orchestration loop; cancel/resume; `abort_run` handling |
 | `preparation.py` | Run setup, skill selection, @file injection, tool building |
-| `execution.py` | Tool call execution; path lock acquisition; HITL two-phase flow; `check_cancel_after_tools` |
+| `execution.py` | Tool call execution; path locks; delegates HITL replay to `decision_flow.py`; built-in `task_plan`; `check_cancel_after_tools` |
+| `decision_flow.py` | Shared `__decision_request` handling: user choice, merge args, second `run_once` |
 | `finalization.py` | Answer generation, eval |
 | `context.py` | `ImmutableRunContext`, `MutableRunState` (includes `resumable`) |
 | `utils.py` | Truncation, checkpoint save, thinking extraction |
@@ -154,8 +185,8 @@ Sophon supports two HITL modes:
 
 **1. Generic tool: `request_human_decision`**
 
-- When `SOPHON_HITL_ENABLED=true`, the main agent receives a synthetic tool with `message` and `choices`.
-- The agent can call it whenever it needs user input (e.g. repeated translation, ambiguous options).
+- **Default off.** When `SOPHON_HITL_ENABLED=true`, the main agent receives a synthetic tool with `message` and `choices`.
+- Use only when you explicitly want the model to pause for multi-choice input; routine destructive actions use skill `__decision_request` (e.g. delete).
 - Frontend receives `DECISION_REQUIRED` (SSE) and shows a modal; user choice is sent via `POST /api/runs/{run_id}/decision`.
 
 **2. Skill-triggered two-phase flow**
@@ -164,14 +195,29 @@ Sophon supports two HITL modes:
 - The execution layer suspends, emits `DECISION_REQUIRED`, and waits for user choice.
 - User choice is merged as `_decision_choice` and the skill is re-invoked with the merged arguments.
 - If the user cancels (e.g. chooses "Cancel"), the skill returns `_abort_run: true` (constant `ABORT_RUN_KEY`). The main agent stops immediately.
+- Optional payload key `DECISION_PAYLOAD_AUTO_CONFIRM_IF_PLAN_CONFIRMED`: when `true` and `state.plan_confirmed` (set by `SophonSkillEventType.PLAN_CONFIRMED`), the executor picks the confirming choice without a second dialog—see *Main agent vs skills* above.
 
-**Constants** (`constants.py`): `DECISION_REQUEST_KEY = "__decision_request"`, `ABORT_RUN_KEY = "_abort_run"`.
+**Constants** (`constants.py`): `DECISION_REQUEST_KEY`, `ABORT_RUN_KEY`, `DECISION_PAYLOAD_AUTO_CONFIRM_IF_PLAN_CONFIRMED`, `SophonSkillEventType`.
 
 **Resumable**: Only when a checkpoint was saved (streaming cancel). HITL cancel does not save a checkpoint; `resumable=false` → frontend does not show Resume button.
 
 ### @file Reference
 
 Questions can reference files with `@filename`. The preparation layer (`inject_file_contents` in `preparation.py`) replaces `@filename` with the filename in the question—no content injection. The main agent selects the appropriate skill (pdf, word, filesystem) based on the file reference and passes the path in tool arguments. Each skill receives `workspace_root` + `path` and reads the file itself.
+
+### Workspace Protocol
+
+- **Uploads**: chat and workflow accept multiple local files in one send. The backend stores them under `workspace/{user_id}/docs/` by default, with safe path checks and per-file size limits.
+- **Downloads**: the workspace API can package multiple visible workspace files into a zip archive. Hidden/system files (for example `sophon.db` and `.DS_Store`) are filtered out of user-facing listings and downloads.
+- **Artifacts**: workflow steps record concrete artifact paths in `output_file` / `output_files` / `artifacts`. The UI treats these as protocol fields and only renders/downloads them; it does not hardcode file types.
+- **Batch progress**: the workflow engine exposes a `batch_progress` snapshot for collection-oriented tasks. The frontend renders it as a status panel without deciding batch semantics itself.
+
+### Workspace Protocol
+
+- **Uploads**: chat and workflow accept multiple local files in one send. The backend stores them under `workspace/{user_id}/docs/` by default, with safe path checks and per-file size limits.
+- **Downloads**: the workspace API can package multiple visible workspace files into a zip archive. Hidden/system files (for example `sophon.db` and `.DS_Store`) are filtered out of user-facing listings and downloads.
+- **Artifacts**: workflow steps record concrete artifact paths in `output_file` / `output_files` / `artifacts`. The UI treats these as protocol fields and only renders/downloads them; it does not hardcode file types.
+- **Batch progress**: the workflow engine exposes a `batch_progress` snapshot for collection-oriented tasks. The frontend renders it as a status panel without deciding batch semantics itself.
 
 ## Database Layer
 
@@ -207,13 +253,13 @@ Key environment variables:
 |----------|---------|-------------|
 | `DEEPSEEK_API_KEY` | — | DeepSeek cloud provider |
 | `DASHSCOPE_API_KEY` | — | Qwen/DashScope provider |
-| `SOPHON_HITL_ENABLED` | true | Add `request_human_decision` tool |
+| `SOPHON_HITL_ENABLED` | false (default) | When true, add `request_human_decision`; delete confirm stays on filesystem `__decision_request` |
 | `SOPHON_THINKING_ENABLED` | true | Parse and emit `<thinking>` blocks |
 | `SOPHON_EMOTION_ENABLED` | true | Run emotion segment analysis after each run |
 | `SOPHON_SPEECH_ENABLED` | 1 | Local STT (faster-whisper) |
 | `SOPHON_MCP_BRIDGE_URL` | — | MCP integration endpoint |
 
-Config classes: `FileInjectionConfig`, `EmotionConfig`, `ReactConfig`, `SkillConfig`, etc. See `config.py`.
+Config classes: `FileInjectionConfig`, `EmotionConfig`, `ReactConfig`, `SkillConfig`, etc. See `config/` package.
 
 ### Key Constants (`constants.py`)
 
@@ -395,7 +441,7 @@ Main Session
 ├── Child Session A (deep-research task)
 │   └── Grandchild Session A1 (follow-up question)
 ├── Child Session B (troubleshoot task)
-└── Child Session C (excel-ops task)
+└── Child Session C (workflow task)
 ```
 
 ### Key Capabilities

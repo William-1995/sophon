@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Parse Word (.doc, .docx) - extract paragraphs and tables. Input: path or content_base64 (from fetch)."""
+"""Parse Word (.doc, .docx) - extract paragraphs and tables. Input: path or content_base64 (from fetch).
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import base64
 import json
 import subprocess
@@ -8,10 +12,7 @@ import tempfile
 from io import BytesIO
 from pathlib import Path
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-_SKILL_DIR = _SCRIPTS_DIR.parent
-if str(_SKILL_DIR) not in sys.path:
-    sys.path.insert(0, str(_SKILL_DIR))
+from common.path_utils import ensure_in_workspace as _ensure_in_workspace
 
 try:
     from constants import (
@@ -26,14 +27,6 @@ except ImportError:
 
 _DOC_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 _DOCX_MAGIC = b"PK"
-
-
-def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
-    try:
-        target.resolve().relative_to(workspace_root.resolve())
-        return True
-    except ValueError:
-        return False
 
 
 def _detect_word_format(data: bytes) -> str:
@@ -155,6 +148,7 @@ def _build_result(
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     workspace_root = Path(params.get("workspace_root", ""))

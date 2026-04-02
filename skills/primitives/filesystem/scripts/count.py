@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Filesystem count - count files and directories."""
+"""Filesystem count - count files and directories.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import fnmatch
 import json
 import sys
 from pathlib import Path
+
+from common.path_utils import ensure_in_workspace as _ensure_in_workspace
 
 
 def _human_size(size_bytes: int | float) -> str:
@@ -15,15 +21,8 @@ def _human_size(size_bytes: int | float) -> str:
     return f"{size:.1f}TB"
 
 
-def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
-    try:
-        target.resolve().relative_to(workspace_root.resolve())
-        return True
-    except ValueError:
-        return False
-
-
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     workspace_root = Path(params.get("workspace_root", ""))
     path = params.get("path", "")

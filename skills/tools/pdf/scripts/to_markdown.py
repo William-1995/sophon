@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""Convert PDF to Markdown (.md). Optional: use outline for headers, write to output_path."""
+"""Convert PDF to Markdown (.md). Optional: use outline for headers, write to output_path.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import base64
 import json
 import sys
 from pathlib import Path
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-_SKILL_DIR = _SCRIPTS_DIR.parent
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
-
-from parse import _ensure_in_workspace, _parse_page_range, _parse_pdf_bytes
+from parse import (
+    _coerce_int_optional,
+    _coerce_optional_str,
+    _ensure_in_workspace,
+    _normalize_page_range,
+    _parse_page_range,
+    _parse_pdf_bytes,
+)
 
 try:
     from constants import PDF_MAX_PAGES
@@ -53,21 +59,18 @@ def _get_outline(data: bytes) -> list[dict] | None:
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     workspace_root = Path(params.get("workspace_root", ""))
 
-    path = (args.get("path") or "").strip()
-    content_base64 = (args.get("content_base64") or "").strip()
-    output_path = (args.get("output_path") or "").strip() or None
-    page_range = (args.get("page_range") or "").strip() or None
-    offset = args.get("offset")
-    limit = args.get("limit")
+    path = _coerce_optional_str(args.get("path"))
+    content_base64 = _coerce_optional_str(args.get("content_base64"))
+    output_path = _coerce_optional_str(args.get("output_path")) or None
+    page_range = _normalize_page_range(args.get("page_range"))
+    offset = _coerce_int_optional(args.get("offset"))
+    limit = _coerce_int_optional(args.get("limit"))
     use_outline = args.get("use_outline", True)
-    if offset is not None:
-        offset = int(offset)
-    if limit is not None:
-        limit = int(limit)
 
     if path and content_base64:
         print(json.dumps({"error": "Provide path OR content_base64, not both"}))
@@ -89,7 +92,7 @@ def main() -> None:
                 return
             data = target.read_bytes()
 
-        text_by_page, _, total_pages = _parse_pdf_bytes(data, page_range, offset, limit)
+        text_by_page, _, total_pages, truncated = _parse_pdf_bytes(data, page_range, offset, limit)
         indices = _parse_page_range(page_range, offset, limit, total_pages)
         outline = _get_outline(data) if use_outline else None
 
@@ -116,6 +119,12 @@ def main() -> None:
         content = "\n".join(parts).strip() or "(no extractable text)"
 
         result: dict = {"content": content, "format": "markdown", "extracted_pages": len(text_by_page), "total_pages": total_pages}
+        if truncated:
+            result["truncated"] = True
+            result["warning"] = (
+                f"Requested more than {PDF_MAX_PAGES} selected pages; "
+                "returned the first chunk only."
+            )
 
         if output_path:
             out_target = (workspace_root / output_path).resolve()

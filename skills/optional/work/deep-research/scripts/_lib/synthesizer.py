@@ -1,8 +1,4 @@
-"""
-Synthesizer - Combine research notes into a structured report.
-
-Single LLM call with all notes as context. Returns ResearchResult.
-"""
+"""Synthesize deep-research notes into a report, summary, and source list (one LLM call)."""
 
 from __future__ import annotations
 
@@ -10,14 +6,21 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-
 logger = logging.getLogger(__name__)
 
 MAX_NOTE_CONTEXT_CHARS = 8000
 
-
 @dataclass
 class ResearchResult:
+    """Final structured output of the synthesizer.
+
+    Attributes:
+        report (str): Long-form markdown-style report.
+        summary (str): Short abstract.
+        sources (list[dict]): ``{"url", "title"}`` dicts in discovery order.
+        sources_count (int): Count of unique sources (may match ``len(sources)``).
+    """
+
     report: str
     summary: str
     sources: list[dict] = field(default_factory=list)  # [{url, title}]
@@ -25,10 +28,14 @@ class ResearchResult:
 
 
 def _build_notes_context(notes) -> tuple[str, list[dict]]:
-    """
-    Build LLM context from notes.
-    Returns (context_str, all_sources) — all_sources contains every unique URL
-    encountered across all sub-questions, preserving discovery order.
+    """Concatenate note context blocks and collect unique source metadata.
+
+    Args:
+        notes: Iterable of ``ResearchNote`` instances.
+
+    Returns:
+        tuple[str, list[dict]]: ``(context_str, all_sources)`` where ``all_sources`` lists
+        each unique URL once in discovery order.
     """
     all_sources: list[dict] = []
     seen_urls: set[str] = set()

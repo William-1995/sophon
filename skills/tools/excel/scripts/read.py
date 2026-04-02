@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Read Excel/CSV files (paths default to workspace/<user_id>)."""
+"""Read Excel/CSV files (paths default to workspace/<user_id>).
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import csv
 import json
 import sys
 from pathlib import Path
+
+from core.execution.arg_coerce import MISSING_WORKBOOK_PATH_HELP, workbook_path_from_tool_stdin
 
 try:
     import openpyxl
@@ -100,13 +106,13 @@ def read_excel(file_path: Path, sheet=0, limit: int | None = None, offset: int =
 def main() -> None:
     params = json.load(sys.stdin)
     args = params.get("arguments") or params
-    file_path = args.get("file", "")
+    file_path = workbook_path_from_tool_stdin(params)
     sheet = args.get("sheet", params.get("sheet", 0))
     limit = args.get("limit", params.get("limit"))
     offset = args.get("offset", params.get("offset", 0))
 
     if not file_path:
-        print(json.dumps({"error": "file parameter is required"}))
+        print(json.dumps({"error": MISSING_WORKBOOK_PATH_HELP}, ensure_ascii=False))
         return
 
     full_path = _resolve_path(params, str(file_path))

@@ -1,6 +1,6 @@
 ---
 name: word
-description: Parse Word (.doc, .docx) documents. Accepts local path or content_base64 (from fetch). Composes with fetch for remote docs.
+description: Read, inspect, and extract Word documents.
 metadata:
   type: primitive
   dependencies: ""

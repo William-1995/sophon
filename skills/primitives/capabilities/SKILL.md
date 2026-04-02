@@ -1,9 +1,6 @@
 ---
 name: capabilities
-description: |
-  Introduce Sophon and list available capabilities.
-  Call ONLY when the user explicitly asks: "what can you do", "who are you", "list skills", "你有什么能力", "你能做什么", etc.
-  Do NOT call for: greetings (hi, hello, 你好), small talk, cancelled runs, or when the user has not explicitly asked about your identity or capabilities. When in doubt, do not call.
+description: Show a short Sophon intro and the available skills list.
 metadata:
   type: primitive
   dependencies: ""

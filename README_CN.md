@@ -46,9 +46,9 @@ Sophon 采用**四层技能架构**（与 agentskills.io 对齐）：
 │            │   │            │   │                  │   │                    │
 │ • filesystem│   │ • pdf      │   │ • deep-research  │   │ • emotion-awareness│
 │ • memory   │   │ • word     │   │ • troubleshoot   │   │                    │
-│ • time     │   │ • excel    │   │ • excel-ops      │   │                    │
-│ • deep-    │   │ • fetch    │   │ [子 Agent]       │   │                    │
-│   recall   │   │ • search   │   │                  │   │                    │
+│ • time     │   │ • excel    │   │ • personal-work- │   │                    │
+│ • deep-    │   │ • fetch    │   │   bench          │   │                    │
+│   recall   │   │ • search   │   │ [子 Agent]       │   │                    │
 │            │   │ • crawler  │   │                  │   │                    │
 │            │   │ • trace    │   │                  │   │                    │
 └────────────┘   └───────────┘   └──────────────────┘   └────────────────────┘
@@ -58,7 +58,7 @@ Sophon 采用**四层技能架构**（与 agentskills.io 对齐）：
 |------|------|------|
 | **Primitives** | `skills/primitives/` | 核心构件：filesystem、time、memory |
 | **Tools** | `skills/tools/` | pdf、word、excel、fetch、search、crawler、metrics、trace、log-analyze |
-| **Optional/Work** | `skills/optional/work/` | 工作类子 Agent：deep-research、troubleshoot、excel-ops |
+| **Optional/Work** | `skills/optional/work/` | 工作类子 Agent：deep-research、troubleshoot |
 | **Optional/Entertain** | `skills/optional/entertainment/` | 如 emotion-awareness |
 
 **示例**：`deep-research` 是子 Agent，会规划、并行搜索、抓取并综合。主 Agent 只需决定*何时调用*。
@@ -68,19 +68,16 @@ Sophon 采用**四层技能架构**（与 agentskills.io 对齐）：
 ## 为什么选择 Sophon？
 
 **工程优先的理念**
-我们相信复杂的 AI 能力应该由工程师设计、测试和验证，而不是由 AI 实时生成。Sophon 为人类策划的智能提供结构，同时让 AI 专注于编排。
+我们相信复杂的助手行为应该由工程师设计、测试和验证，而不是只靠提示词临场发挥。Sophon 为 AI 提供结构，同时把边界交给人来把控。
 
-**零摩擦的技能开发**
-只需将 `SKILL.md` 和脚本放入文件夹，Sophon 就能自动发现。无需装饰器，无需注册样板代码，无框架锁定。技能是自包含的、可移植的、运行时无关的。
+**协议优先的工作流**
+Chat、workflow、tools、skills、工作区文件和产物都通过明确的协议协作。前端负责展示协议状态，不硬编码业务逻辑。
 
 **为真实世界的复杂性而设计**
-Sophon 通过父子会话处理多任务工作流，支持并发任务执行，并提供对 AI 思考和操作的完全可见性。随时取消长时间运行的任务，从检查点恢复，并维护完整的审计追踪。
-
-**设计即安全**
-进程隔离确保技能崩溃不会拖垮系统。能力边界防止 AI 突破定义的限制。每个技能执行经过验证的脚本，从不执行任意 AI 生成的代码。
+Sophon 通过父子会话处理多任务工作流，支持并发任务执行，并提供对 AI 思考和操作的完全可见性。随时取消长时间运行的任务，从检查点恢复，并维护完整的审计追踪。工作流步骤也会暴露真实产物路径，用户可以把多文件结果打包下载为 zip。
 
 **本地优先，隐私优先**
-所有数据都保留在你机器的 SQLite 中。无云依赖，无外部向量数据库。你的对话、上下文和工作流完全由你控制。
+所有数据都保留在你机器的 SQLite 中。无云依赖，无外部向量数据库。你的对话、上下文、工作流和工作区文件完全由你控制。工作区上传默认进入 `workspace/{user}/docs/`，隐藏/系统文件不会出现在用户可见列表里。
 
 ---
 
@@ -97,7 +94,7 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\Act
 # 2. 配置（选择你的提供商）
 # 配置文件位置：
 #   - .env（主配置文件，从 .env.example 复制）
-#   - config.py（系统参数和默认值）
+#   - config/（系统参数和默认值）
 cp .env.example .env
 # 在 .env 中只配置一个 LLM 提供商：
 #   - DeepSeek（云端）：DEEPSEEK_API_KEY=...
@@ -106,9 +103,12 @@ cp .env.example .env
 # 如同时配置多个，优先级：DeepSeek > Qwen > Ollama。
 
 # 3. 启动（自动安装依赖、Playwright 并运行）
-python start.py              # API 在 http://localhost:8080
+python start.py              # 启动后终端会打印 API 地址（默认端口见 config.DEFAULT_API_PORT）
 
 cd frontend && npm install && npm run dev  # UI 在 http://localhost:5173
+
+# 可选：终端单次问答（无 Web UI，说明见 run_cli.py 文档字符串）
+# python run_cli.py "你的问题"
 ```
 
 ---
@@ -132,7 +132,6 @@ Sophon 通过父子会话模型支持复杂的多任务工作流：
 内置的功能技能，本身就是子 Agent：
 - **`deep-research`**：多阶段研究，支持并行抓取、LLM 降噪和带引用的综合报告
 - **`troubleshoot`**：关联日志、追踪和指标，生成诊断图表
-- **`excel-ops`**：AI 辅助的复杂 Excel 操作
 
 **技能组合**
 工程师可以通过组合现有技能构建复杂能力：
@@ -213,7 +212,6 @@ Sophon 将可见性视为一等公民：
 |------|------|
 | `deep-research` | 多阶段研究：规划 → 并行抓取 → 综合 |
 | `troubleshoot` | 日志、追踪、指标的根因分析 |
-| `excel-ops` | 从网络/搜索填充 Excel 列，LLM 提取 |
 
 **可选/娱乐**（`skills/optional/entertainment/`）
 | 技能 | 描述 |
@@ -276,8 +274,11 @@ chmod +x skills/primitives/my-skill/scripts/run.py
 
 ## 文档
 
-- **[架构](docs/ARCHITECTURE.md)** - 技术架构与设计
+- **[设计原则](docs/PRINCIPLES.md)** - Sophon 想成为什么，以及不应该变成什么
+- **[架构](docs/ARCHITECTURE.md)** - 技术协议与运行边界
+- **[生态兼容](docs/ECOSYSTEM_COMPATIBILITY.md)** - Sophon 如何映射 Claude Code、Codex 和 MCP 生态
 - **[API 参考](docs/API.md)** - HTTP API 端点
+- **[路线图](docs/ROADMAP.md)** - 0.2 / 0.2.1 / 0.3 方向
 - **[创建技能](docs/create-skill.md)** - 技能编写指南
 
 ---

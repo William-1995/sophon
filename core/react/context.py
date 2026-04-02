@@ -62,6 +62,8 @@ class MutableRunState:
         answer_from_skill: Optional direct answer provided by a skill.
         cancelled: True if the run was cancelled by user request.
         resumable: True when checkpoint was saved (streaming cancel); False for HITL cancel.
+        plan_confirmed: True after a skill emits SophonSkillEventType.PLAN_CONFIRMED (event-driven).
+        empty_tool_force_count: Times we nudged the model to call tools with zero observations so far.
     """
 
     total_tokens: int = 0
@@ -71,3 +73,27 @@ class MutableRunState:
     answer_from_skill: str | None = None
     cancelled: bool = False
     resumable: bool = False
+    plan_confirmed: bool = False
+    empty_tool_force_count: int = 0
+
+
+
+def build_initial_messages(
+    question: str,
+    context: list[dict] | None,
+    referent_rounds: int,
+    file_context: list[dict] | None = None,
+) -> list[dict]:
+    """Build initial messages from context, file context, and question."""
+    messages: list[dict] = []
+
+    if file_context:
+        messages.extend(file_context)
+
+    if context:
+        keep = min(len(context), referent_rounds * 2)
+        for c in (context[-keep:] if len(context) > keep else context):
+            messages.append({"role": c.get("role", "user"), "content": c.get("content", "")})
+
+    messages.append({"role": "user", "content": question})
+    return messages

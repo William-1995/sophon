@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-RLM-style memory exploration.
-Returns session metadata and tool map so the LLM can orient and decide next steps.
+RLM-style memory exploration: session index and suggested next memory tools.
+
+Returns session metadata and a short tool map so the model can orient before search/analyze.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
 """
 import json
 import sqlite3
@@ -9,22 +13,23 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-_script_dir = Path(__file__).resolve().parent
-_skill_dir = _script_dir.parent
-_primitives = _skill_dir.parent
-_root = _primitives.parent.parent
-for p in (_skill_dir, _primitives, _root):
-    if str(p) not in sys.path:
-        sys.path.insert(0, str(p))
-
 from common import resolve_db_path
+from _scope import resolve_scoped_session_ids
 
 # Max session rows to include in explore output (truncated with "...and N more" if exceeded)
 EXPLORE_MAX_SESSIONS_DISPLAY = 100
 
 
 def _load_session_index(db_path: Path, scope_session_ids: list[str] | None = None) -> dict:
-    """Load lightweight session index: {session_id: {count, first_ts, last_ts}}."""
+    """Load a lightweight session index from ``memory_long_term``.
+
+    Args:
+        db_path (Path): SQLite path.
+        scope_session_ids (list[str] | None): When set, restrict to these sessions.
+
+    Returns:
+        dict: Maps ``session_id`` to ``message_count``, ``first_ts``, ``last_ts`` keys.
+    """
     conn = sqlite3.connect(str(db_path))
     if scope_session_ids:
         placeholders = ",".join("?" * len(scope_session_ids))
@@ -47,6 +52,7 @@ def _load_session_index(db_path: Path, scope_session_ids: list[str] | None = Non
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     db_path = resolve_db_path(params)
@@ -58,9 +64,7 @@ def main() -> None:
         print(json.dumps({"error": "Database not found", "db_path": str(db_path)}))
         return
 
-    scope_ids = params.get("_memory_scope_session_ids")
-    if not isinstance(scope_ids, list):
-        scope_ids = None
+    scope_ids = resolve_scoped_session_ids(params, params.get("session_id"))
     index = _load_session_index(db_path, scope_session_ids=scope_ids)
     total_messages = sum(v["message_count"] for v in index.values())
     next_steps = (

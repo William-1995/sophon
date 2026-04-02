@@ -4,17 +4,23 @@ Emotion sub-agent run - retrieve emotion segments from DB.
 
 Called when main agent invokes emotion-awareness.run (e.g. user asks "how's my mood").
 Sub-agent perception (LLM) runs async after each chat; this script fetches stored segments.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
 """
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
-_project_root = Path(os.environ.get("SOPHON_ROOT", Path(__file__).resolve().parent.parent.parent.parent.parent))
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
+from constants import (
+    EMOTION_RUN_DEFAULT_RECENT_HOURS,
+    EMOTION_RUN_DEFAULT_SEGMENT_LIMIT,
+    EMOTION_RUN_OBSERVATION_PREVIEW_COUNT,
+    EMOTION_RUN_OBSERVATION_SUMMARY_MAX_CHARS,
+    END_OF_DAY_INCLUSIVE_OFFSET_SECONDS,
+    ISO_DATE_YYYY_MM_DD_LEN,
+)
 from db import emotion as db_emotion
 from db.logs import insert as log_insert
 
@@ -24,8 +30,10 @@ def _parse_time(value: str, end_of_day: bool = False) -> float:
     try:
         return float(value)
     except ValueError:
-        ts = datetime.strptime(str(value)[:10], "%Y-%m-%d").timestamp()
-        return ts + 86399 if end_of_day else ts
+        ts = datetime.strptime(
+            str(value)[:ISO_DATE_YYYY_MM_DD_LEN], "%Y-%m-%d"
+        ).timestamp()
+        return ts + END_OF_DAY_INCLUSIVE_OFFSET_SECONDS if end_of_day else ts
 
 
 def _resolve_params(params: dict) -> tuple[Path | None, str, str, float, int, str | None, str | None]:
@@ -36,14 +44,15 @@ def _resolve_params(params: dict) -> tuple[Path | None, str, str, float, int, st
     ).strip()
     args = params.get("arguments") or params
     scope = (args.get("scope") or "all").strip().lower()
-    hours = float(args.get("hours") or 168.0)  # default 7 days for recent_hours
-    limit = int(args.get("limit") or 50)
+    hours = float(args.get("hours") or EMOTION_RUN_DEFAULT_RECENT_HOURS)
+    limit = int(args.get("limit") or EMOTION_RUN_DEFAULT_SEGMENT_LIMIT)
     since = str(args.get("since") or "").strip() or None
     until = str(args.get("until") or "").strip() or None
     return db_path, session_id, scope, hours, limit, since, until
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     db_path, session_id, scope, hours, limit, since, until = _resolve_params(params)
 
@@ -92,9 +101,10 @@ def main() -> None:
         )
 
     obs_lines = [f"Found {len(segments)} emotion segment(s)."]
-    for i, s in enumerate(segments[:5], 1):
+    top = segments[:EMOTION_RUN_OBSERVATION_PREVIEW_COUNT]
+    for i, s in enumerate(top, 1):
         label = s.get("emotion_label") or "unknown"
-        summary = (s.get("combined_summary") or "")[:200]
+        summary = (s.get("combined_summary") or "")[:EMOTION_RUN_OBSERVATION_SUMMARY_MAX_CHARS]
         obs_lines.append(f"{i}. [{label}] {summary}")
 
     print(json.dumps({

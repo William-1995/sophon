@@ -1,8 +1,4 @@
-"""
-Research Planner - Decompose a research question into sub-questions and search queries.
-
-Single LLM call. Returns a ResearchPlan dataclass.
-"""
+"""Plan deep research: one LLM call to split a question into sub-questions and search queries."""
 
 from __future__ import annotations
 
@@ -20,17 +16,35 @@ QUERIES_PER_SUB_QUESTION = 2
 
 @dataclass
 class SubQuestion:
+    """One branch of the research plan.
+
+    Attributes:
+        question (str): Focused sub-question text.
+        queries (list[str]): Web search strings for this sub-question.
+    """
+
     question: str
     queries: list[str]
 
 
 @dataclass
 class ResearchPlan:
+    """Full decomposition returned by the planner LLM.
+
+    Attributes:
+        original_question (str): User-facing research ask.
+        sub_questions (list[SubQuestion]): Planned branches with queries.
+    """
+
     original_question: str
     sub_questions: list[SubQuestion] = field(default_factory=list)
 
     def all_queries(self) -> list[tuple[str, str]]:
-        """Returns [(sub_question, query)] pairs."""
+        """Flatten sub-questions into (sub_question_text, query) pairs.
+
+        Returns:
+            list[tuple[str, str]]: Pairs in planner order.
+        """
         return [
             (sq.question, q)
             for sq in self.sub_questions

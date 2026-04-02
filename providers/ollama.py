@@ -6,8 +6,6 @@ Uses OpenAI-compatible endpoint provided by Ollama.
 """
 
 import os
-from typing import Any
-
 from providers.openai_base import OpenAICompatibleProvider
 
 _DEFAULT_BASE_URL = "http://localhost:11434/v1"

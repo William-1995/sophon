@@ -1,1 +1,1 @@
-"""Emotion sub-agent lib - analyzer, task (enqueue)."""
+"""Emotion-awareness skill library (analyzer + background enqueue task)."""

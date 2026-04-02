@@ -1,6 +1,6 @@
 ---
 name: crawler
-description: Web scraping via Playwright. Use when user wants to fetch page content or scrape a URL. 
+description: Scrape a single URL and return the main page content.
 metadata:
   type: primitive
   dependencies: ""

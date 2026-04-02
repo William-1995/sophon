@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 
+from constants import MEMORY_CACHE_QUESTION_HASH_HEX_LEN
 from db.schema import get_connection
 
 MAX_CACHE_ENTRIES = 1000
@@ -14,7 +15,9 @@ def _normalize_question(q: str) -> str:
 
 
 def _question_hash(q: str) -> str:
-    return hashlib.sha256(_normalize_question(q).encode("utf-8")).hexdigest()[:32]
+    return hashlib.sha256(_normalize_question(q).encode("utf-8")).hexdigest()[
+        :MEMORY_CACHE_QUESTION_HASH_HEX_LEN
+    ]
 
 
 def get(db_path: Path, question: str) -> dict | None:

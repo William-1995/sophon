@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""List sheets in Excel file (relative to workspace/<user_id> by default)."""
+"""List sheets in Excel file (relative to workspace/<user_id> by default).
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
 from pathlib import Path
+
+from core.execution.arg_coerce import MISSING_WORKBOOK_PATH_HELP, workbook_path_from_tool_stdin
 
 try:
     import openpyxl
@@ -32,11 +38,10 @@ def _resolve_path(params: dict, file_path: str) -> Path:
 
 def main() -> None:
     params = json.load(sys.stdin)
-    args = params.get("arguments") or params
-    file_path = args.get("file", "")
+    file_path = workbook_path_from_tool_stdin(params)
 
     if not file_path:
-        print(json.dumps({"error": "file parameter is required"}))
+        print(json.dumps({"error": MISSING_WORKBOOK_PATH_HELP}, ensure_ascii=False))
         return
 
     full_path = _resolve_path(params, str(file_path))

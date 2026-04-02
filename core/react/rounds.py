@@ -5,11 +5,9 @@ Handles per-round LLM calls, cancellation checks, and tool execution.
 """
 
 import logging
-from typing import Any
-
 from config import get_config
 from core.react.types import CancelCheck, DecisionWaiter, EventSink, ProgressCallback
-from constants import DEFAULT_MAX_ROUNDS
+from constants import AGENT_LOOP_FORCE_TOOL_MSG, DEFAULT_MAX_ROUNDS, REACT_MAX_EMPTY_TOOL_FORCE
 from core.react.context import ImmutableRunContext, MutableRunState
 from core.react.execution import (
     check_cancel_after_tools,
@@ -174,6 +172,20 @@ async def run_react_rounds(
             return
         if action == "break":
             ctx.messages.append({"role": "assistant", "content": resp.get("content", "")})
+            if (
+                not state.observations
+                and ctx.tools
+                and state.empty_tool_force_count < REACT_MAX_EMPTY_TOOL_FORCE
+            ):
+                state.empty_tool_force_count += 1
+                ctx.messages.append({"role": "user", "content": AGENT_LOOP_FORCE_TOOL_MSG})
+                logger.info(
+                    "[react] round=%d: no tool_calls and no observations -> force tool (%d/%d)",
+                    round_num,
+                    state.empty_tool_force_count,
+                    REACT_MAX_EMPTY_TOOL_FORCE,
+                )
+                continue
             return
 
         obs_list, gu, direct, refs, abort_run, skill_tokens = await execute_tool_calls_batch(
@@ -187,6 +199,7 @@ async def run_react_rounds(
             run_id=run_id,
             decision_waiter=decision_waiter,
             tools=ctx.tools,
+            state=state,
         )
         if check_cancel_after_tools(
             cancel_check, ctx, state, round_num, run_id, resp, obs_list

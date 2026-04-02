@@ -10,6 +10,8 @@ import struct
 from abc import ABC, abstractmethod
 from typing import Any
 
+from constants import IPC_MESSAGE_LENGTH_PREFIX_BYTES
+
 
 class BaseSerializer(ABC):
     """Base interface for pack/unpack."""
@@ -56,12 +58,13 @@ class MessagePackSerializer(BaseSerializer):
         return struct.pack(">I", len(payload)) + payload
 
     def unpack(self, data: bytes) -> dict[str, Any] | None:
-        if len(data) < 4:
+        if len(data) < IPC_MESSAGE_LENGTH_PREFIX_BYTES:
             return None
-        length = struct.unpack(">I", data[:4])[0]
-        if len(data) < 4 + length:
+        length = struct.unpack(">I", data[:IPC_MESSAGE_LENGTH_PREFIX_BYTES])[0]
+        need = IPC_MESSAGE_LENGTH_PREFIX_BYTES + length
+        if len(data) < need:
             return None
-        payload = data[4 : 4 + length]
+        payload = data[IPC_MESSAGE_LENGTH_PREFIX_BYTES:need]
         try:
             return self._msgpack.unpackb(payload, raw=False)
         except Exception:

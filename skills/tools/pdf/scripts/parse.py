@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Parse PDF - extract text per page and metadata. Input: path or content_base64 (from fetch)."""
+"""Parse PDF - extract text per page and metadata. Input: path or content_base64 (from fetch).
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import base64
 import json
 import sys
 from pathlib import Path
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-_SKILL_DIR = _SCRIPTS_DIR.parent
-if str(_SKILL_DIR) not in sys.path:
-    sys.path.insert(0, str(_SKILL_DIR))
+from common.path_utils import ensure_in_workspace as _ensure_in_workspace
 
 try:
     from constants import OBSERVATION_PREVIEW_LEN, PDF_MAX_PAGES
@@ -17,12 +18,49 @@ except ImportError:
     OBSERVATION_PREVIEW_LEN = 500
 
 
-def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
+def _coerce_optional_str(val: object) -> str:
+    """Tool args may be str or a single-element list from malformed JSON."""
+    if val is None:
+        return ""
+    if isinstance(val, list):
+        if len(val) == 1 and val[0] is not None:
+            return str(val[0]).strip()
+        return ""
+    return str(val).strip()
+
+
+def _normalize_page_range(raw: object) -> str | None:
+    """LLM may pass page_range as str, int, or list (e.g. [1,2,3] or ['38-50'])."""
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, list):
+        if not raw:
+            return None
+        if len(raw) == 1:
+            x = raw[0]
+            if isinstance(x, str):
+                return x.strip() or None
+            if isinstance(x, (int, float)):
+                return str(int(x))
+            return str(x).strip() or None
+        if all(isinstance(x, (int, float)) for x in raw):
+            return ",".join(str(int(x)) for x in raw)
+        return ",".join(str(x).strip() for x in raw if x is not None) or None
+    if isinstance(raw, (int, float)):
+        return str(int(raw))
+    s = str(raw).strip()
+    return s or None
+
+
+def _coerce_int_optional(val: object) -> int | None:
+    if val is None:
+        return None
+    if isinstance(val, list) and len(val) == 1:
+        val = val[0]
     try:
-        target.resolve().relative_to(workspace_root.resolve())
-        return True
-    except ValueError:
-        return False
+        return int(val)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_page_range(
@@ -62,18 +100,17 @@ def _parse_pdf_bytes(
     page_range: str | None = None,
     offset: int | None = None,
     limit: int | None = None,
-) -> tuple[list[str], dict]:
+) -> tuple[list[str], dict, int, bool]:
     from pypdf import PdfReader
     from io import BytesIO
 
     reader = PdfReader(BytesIO(data))
     total = len(reader.pages)
     indices = _parse_page_range(page_range, offset, limit, total)
+    truncated = False
     if len(indices) > PDF_MAX_PAGES:
-        raise ValueError(
-            f"Requested {len(indices)} pages; max allowed per parse is {PDF_MAX_PAGES}. "
-            "Use page_range or offset+limit to extract fewer pages."
-        )
+        indices = indices[:PDF_MAX_PAGES]
+        truncated = True
 
     text_by_page: list[str] = []
     for i in indices:
@@ -89,7 +126,7 @@ def _parse_pdf_bytes(
             if v:
                 metadata[k.lstrip("/").lower()] = str(v) if not callable(v) else ""
 
-    return text_by_page, metadata, total
+    return text_by_page, metadata, total, truncated
 
 
 def _load_input_data(
@@ -122,20 +159,17 @@ def _maybe_write_pdf_output(
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     workspace_root = Path(params.get("workspace_root", ""))
 
-    path = (args.get("path") or "").strip()
-    content_base64 = (args.get("content_base64") or "").strip()
-    output_path = (args.get("output_path") or "").strip() or None
-    page_range = (args.get("page_range") or "").strip() or None
-    offset = args.get("offset")
-    limit = args.get("limit")
-    if offset is not None:
-        offset = int(offset)
-    if limit is not None:
-        limit = int(limit)
+    path = _coerce_optional_str(args.get("path"))
+    content_base64 = _coerce_optional_str(args.get("content_base64"))
+    output_path = _coerce_optional_str(args.get("output_path")) or None
+    page_range = _normalize_page_range(args.get("page_range"))
+    offset = _coerce_int_optional(args.get("offset"))
+    limit = _coerce_int_optional(args.get("limit"))
 
     if path and content_base64:
         print(json.dumps({"error": "Provide path OR content_base64, not both"}))
@@ -150,7 +184,7 @@ def main() -> None:
             print(json.dumps({"error": err}))
             return
 
-        text_by_page, metadata, total_pages = _parse_pdf_bytes(
+        text_by_page, metadata, total_pages, truncated = _parse_pdf_bytes(
             data, page_range, offset, limit
         )
         full_text = "\n\n".join(text_by_page)
@@ -169,6 +203,12 @@ def main() -> None:
             "metadata": metadata,
             "observation": obs,
         }
+        if truncated:
+            result["truncated"] = True
+            result["warning"] = (
+                f"Requested more than {PDF_MAX_PAGES} selected pages; "
+                "returned the first chunk only."
+            )
         if output_path:
             result["output_path"] = output_path
             result["written"] = True

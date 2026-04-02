@@ -1,7 +1,6 @@
-"""Emotion segment analyzer - LLM sub-agent for perception.
+"""LLM sub-agent that infers user emotion from a conversation segment.
 
-Uses LLM to perceive user emotion from conversation segment. Independent context;
-receives user's actual questions and assistant replies to truly perceive.
+Builds an independent context from memory and traces; not the main agent's scratchpad.
 """
 
 import json
@@ -9,6 +8,13 @@ import logging
 from pathlib import Path
 
 from config import get_config
+from constants import (
+    EMOTION_ANALYZER_FALLBACK_SUMMARY_MAX_CHARS,
+    EMOTION_ANALYZER_MESSAGES_IN_RANGE_LIMIT,
+    EMOTION_ANALYZER_SEGMENT_MAX_CHARS,
+    EMOTION_ANALYZER_TRACE_LINES_IN_SEGMENT_MAX,
+    EMOTION_ANALYZER_TRACE_PREVIEW_LEN,
+)
 from db import memory_long_term
 from db import traces
 from providers import get_provider
@@ -32,10 +38,6 @@ user_summary: 1-2 sentences summarizing the user's messages and tone.
 system_summary: 1-2 sentences summarizing what the assistant/system did (tools, outcomes) if any.
 """
 
-_TRACE_PREVIEW_LEN = 80
-_SEGMENT_MAX_CHARS = 4000
-
-
 async def analyze_segment(
     db_path: Path,
     session_id: str,
@@ -44,7 +46,19 @@ async def analyze_segment(
     start_at: float,
     end_at: float,
 ) -> tuple[str | None, str | None, str | None]:
-    """Analyze a session segment via LLM sub-agent and produce summaries and emotion label."""
+    """Run the perception LLM on messages and trace lines in ``[start_at, end_at]``.
+
+    Args:
+        db_path (Path): SQLite path.
+        session_id (str): Session to analyze.
+        user_message (str): Latest user text (anchor for the segment).
+        assistant_message (str): Latest assistant text.
+        start_at (float): Segment window start (epoch).
+        end_at (float): Segment window end (epoch).
+
+    Returns:
+        tuple[str | None, str | None, str | None]: ``(emotion_label, user_summary, system_summary)``.
+    """
     segment_text = _build_segment_for_perception(
         db_path=db_path,
         session_id=session_id,
@@ -74,7 +88,7 @@ async def analyze_segment(
         logger.warning("[emotion] sub-agent chat failed: %s", e, exc_info=True)
 
     combined = f"User: {user_message}\nAssistant: {assistant_message}" if user_message or assistant_message else ""
-    user_sum = combined[:500] if combined else None
+    user_sum = combined[:EMOTION_ANALYZER_FALLBACK_SUMMARY_MAX_CHARS] if combined else None
     return user_sum, None, "neutral"
 
 
@@ -88,7 +102,7 @@ def _build_segment_for_perception(
 ) -> str:
     """Build conversation segment with user's actual questions for perception."""
     msgs = memory_long_term.get_in_time_range(
-        db_path, session_id, start_at, end_at, limit=20
+        db_path, session_id, start_at, end_at, limit=EMOTION_ANALYZER_MESSAGES_IN_RANGE_LIMIT
     )
     parts: list[str] = []
 
@@ -115,12 +129,17 @@ def _build_segment_for_perception(
         for t in tracelist:
             skill = t.get("skill") or "?"
             action = t.get("action") or "?"
-            preview = (t.get("result_preview") or "")[:_TRACE_PREVIEW_LEN]
+            preview = (t.get("result_preview") or "")[:EMOTION_ANALYZER_TRACE_PREVIEW_LEN]
             trace_lines.append(f"  - {skill}.{action}: {preview}" if preview else f"  - {skill}.{action}")
-        parts.append("[System activity]\n" + "\n".join(trace_lines[:15]))
+        parts.append(
+            "[System activity]\n"
+            + "\n".join(trace_lines[:EMOTION_ANALYZER_TRACE_LINES_IN_SEGMENT_MAX])
+        )
 
     combined = "\n\n".join(parts)
-    return combined[:_SEGMENT_MAX_CHARS] if len(combined) > _SEGMENT_MAX_CHARS else combined
+    if len(combined) > EMOTION_ANALYZER_SEGMENT_MAX_CHARS:
+        return combined[:EMOTION_ANALYZER_SEGMENT_MAX_CHARS]
+    return combined
 
 
 def _parse_emotion_response(content: str) -> dict | None:

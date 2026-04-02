@@ -1,50 +1,26 @@
-"""
-Time utilities for primitive skills.
-
-Provides timestamp formatting and duration calculation utilities.
-"""
+"""Timestamp and duration formatting for primitive skills."""
 
 import time
 from datetime import datetime
-from typing import Optional
-
-
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
 
 DEFAULT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_DATE_ONLY_FORMAT = "%Y-%m-%d"
 SECONDS_PER_DAY = 86400
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 def ts_to_date(timestamp: float | int | None, fmt: str = DEFAULT_DATE_FORMAT) -> str | None:
-    """Format Unix timestamp to human-readable date string.
+    """Format Unix epoch seconds to a local-time string.
 
     Args:
-        timestamp: Unix timestamp (seconds since epoch).
-        fmt: Date format string (default: "%Y-%m-%d %H:%M:%S").
+        timestamp (float | int | None): Epoch seconds; ``None`` yields ``None``.
+        fmt (str): ``time.strftime`` format string.
 
     Returns:
-        Formatted date string or None if timestamp is invalid.
-
-    Example:
-        >>> ts_to_date(1704067200)
-        '2024-01-01 00:00:00'
-        
-        >>> ts_to_date(1704067200, "%Y-%m-%d")
-        '2024-01-01'
-        
-        >>> ts_to_date(None)
-        None
+        str | None: Formatted time, or ``None`` if invalid.
     """
     if timestamp is None:
         return None
-    
+
     try:
         ts = int(float(timestamp))
         return time.strftime(fmt, time.localtime(ts))
@@ -53,18 +29,14 @@ def ts_to_date(timestamp: float | int | None, fmt: str = DEFAULT_DATE_FORMAT) ->
 
 
 def parse_date_to_ts(date_str: str, fmt: str = DEFAULT_DATE_ONLY_FORMAT) -> float | None:
-    """Parse date string to Unix timestamp.
+    """Parse a calendar date string to epoch seconds.
 
     Args:
-        date_str: Date string to parse.
-        fmt: Date format string (default: "%Y-%m-%d").
+        date_str (str): Date text.
+        fmt (str): ``datetime.strptime`` format.
 
     Returns:
-        Unix timestamp or None if parsing fails.
-
-    Example:
-        >>> parse_date_to_ts("2024-01-01")
-        1704067200.0
+        float | None: Epoch seconds, or ``None`` on parse failure.
     """
     try:
         dt = datetime.strptime(date_str, fmt)
@@ -74,50 +46,42 @@ def parse_date_to_ts(date_str: str, fmt: str = DEFAULT_DATE_ONLY_FORMAT) -> floa
 
 
 def format_duration(seconds: float | int) -> str:
-    """Format duration in seconds to human-readable string.
+    """Human-readable duration from seconds (e.g. ``1h 1m 1s``).
 
     Args:
-        seconds: Duration in seconds.
+        seconds (float | int): Non-negative duration.
 
     Returns:
-        Human-readable duration string.
-
-    Example:
-        >>> format_duration(3661)
-        '1h 1m 1s'
-        
-        >>> format_duration(45)
-        '45s'
+        str: Compact duration label.
     """
     if seconds < 60:
         return f"{int(seconds)}s"
-    elif seconds < 3600:
+    if seconds < 3600:
         minutes = int(seconds // 60)
         secs = int(seconds % 60)
         return f"{minutes}m {secs}s" if secs else f"{minutes}m"
-    else:
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    return f"{hours}h {minutes}m" if minutes else f"{hours}h"
 
 
 def get_current_timestamp() -> int:
-    """Get current Unix timestamp.
+    """Current Unix time in seconds.
 
     Returns:
-        Current Unix timestamp in seconds.
+        int: Epoch seconds.
     """
     return int(time.time())
 
 
 def add_days_to_ts(timestamp: float | int, days: int) -> float:
-    """Add days to a timestamp.
+    """Shift a timestamp by a whole number of days.
 
     Args:
-        timestamp: Base timestamp.
-        days: Number of days to add (can be negative).
+        timestamp (float | int): Base epoch seconds.
+        days (int): Days to add (may be negative).
 
     Returns:
-        New timestamp with days added.
+        float: Shifted timestamp.
     """
     return float(timestamp) + (days * SECONDS_PER_DAY)

@@ -2,6 +2,7 @@
 import time
 from pathlib import Path
 
+from constants import EXECUTOR_TRACE_PREVIEW_LEN
 from db.schema import get_connection
 
 
@@ -66,7 +67,11 @@ def insert(
                 skill,
                 action,
                 tokens,
-                (result_preview[:500] if result_preview else None),
+                (
+                    result_preview[:EXECUTOR_TRACE_PREVIEW_LEN]
+                    if result_preview
+                    else None
+                ),
                 json.dumps(metadata) if metadata else None,
             ),
         )

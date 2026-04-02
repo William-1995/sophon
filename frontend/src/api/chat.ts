@@ -18,12 +18,13 @@ export interface StreamResult {
 export async function sendAsync(
   message: string,
   skill: string | null,
-  sessionId: string
+  sessionId: string,
+  uploadedFiles: string[] = []
 ): Promise<{ child_session_id?: string }> {
   const res = await fetch(`${API_BASE}/api/chat/async`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, skill, session_id: sessionId }),
+    body: JSON.stringify({ message, skill, session_id: sessionId, uploaded_files: uploadedFiles }),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
@@ -52,6 +53,7 @@ export interface DecisionRequired {
   runId: string
   message?: string
   choices?: string[]
+  payload?: Record<string, unknown>
 }
 
 export async function sendStream(
@@ -62,7 +64,8 @@ export async function sendStream(
   onChunk: (data: Record<string, unknown>) => void,
   onRunStarted?: (runId: string) => void,
   onDecisionRequired?: (data: DecisionRequired) => void,
-  resumeRunId?: string | null
+  resumeRunId?: string | null,
+  uploadedFiles: string[] = []
 ): Promise<StreamResult> {
   const body: Record<string, unknown> = {
     message: resumeRunId ? '[Resume]' : message,
@@ -70,6 +73,7 @@ export async function sendStream(
     session_id: sessionId,
   }
   if (resumeRunId) body.resume_run_id = resumeRunId
+  if (uploadedFiles.length > 0) body.uploaded_files = uploadedFiles
   const res = await fetch(`${API_BASE}/api/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -117,6 +121,7 @@ export async function sendStream(
         runId: (value.runId ?? data.runId ?? '') as string,
         message: (value.message ?? value.prompt) as string | undefined,
         choices: Array.isArray(value.choices) ? (value.choices as string[]) : undefined,
+        payload: (value.payload as Record<string, unknown> | undefined) ?? undefined,
       })
     }
     if (type === 'progress' && typeof data.tokens === 'number') onProgress(data.tokens)

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Metrics query - query metrics from SQLite."""
+"""Metrics query - query metrics from SQLite.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
 import time
 from collections import defaultdict
 from pathlib import Path
 
-# Add skill root for constants
-_skill_root = Path(__file__).resolve().parent.parent
-if str(_skill_root) not in sys.path:
-    sys.path.insert(0, str(_skill_root))
+from common.db_utils import resolve_db_path
 
-from constants import DB_FILENAME
 from db.metrics import query as query_metrics
 
 # Auto-bucket when raw point count exceeds this threshold
@@ -28,36 +28,11 @@ def _ts_to_date(ts) -> str | None:
         return None
 
 
-def _resolve_db_path(params: dict) -> Path:
-    p = params.get("db_path")
-    if p:
-        return Path(p)
-    return Path(params.get("workspace_root", "")) / DB_FILENAME
-
-
-def _bucket_by_hour(data: list[dict]) -> list[dict]:
-    """Average data points into hourly buckets to keep chart readable."""
-    buckets: dict[int, list[float]] = defaultdict(list)
-    for d in data:
-        ts = d.get("timestamp")
-        val = d.get("value")
-        if ts is not None and val is not None:
-            hour_key = int(ts) // 3600 * 3600
-            buckets[hour_key].append(float(val))
-    return [
-        {
-            "timestamp": hour_ts,
-            "value": round(sum(vals) / len(vals), 2),
-            "date": time.strftime("%m-%d %H:00", time.localtime(hour_ts)),
-        }
-        for hour_ts, vals in sorted(buckets.items())
-    ]
-
-
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
-    db_path = _resolve_db_path(params)
+    db_path = resolve_db_path(params)
     name = args.get("name", params.get("name", ""))
     since = args.get("since")
     until = args.get("until")

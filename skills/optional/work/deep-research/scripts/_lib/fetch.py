@@ -1,8 +1,6 @@
-"""
-Page Fetcher - Fetch a URL and extract readable text.
+"""Fetch HTML and extract readable text for deep-research (internal, not a standalone skill).
 
-Internal helper for deep-research. Not exposed as a standalone SKILL.
-Uses httpx (already in requirements) + beautifulsoup4.
+Uses ``httpx`` and ``beautifulsoup4``. Intended for import from the deep-research pipeline only.
 """
 
 from __future__ import annotations
@@ -10,8 +8,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-
 import httpx
+from deep_research_constants import DEEP_RESEARCH_ERROR_PREVIEW_MAX_CHARS
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +68,7 @@ async def fetch_page(url: str, client: httpx.AsyncClient) -> FetchedPage:
             return FetchedPage(url=url, title=title, text="", ok=False, error="empty text after extraction")
         return FetchedPage(url=url, title=title, text=text, ok=True)
     except Exception as e:
-        err = str(e)[:120]
+        err = str(e)[:DEEP_RESEARCH_ERROR_PREVIEW_MAX_CHARS]
         logger.debug("fetch_page failed url=%s: %s", url, err)
         return FetchedPage(url=url, title="", text="", ok=False, error=err)
 
@@ -93,7 +91,15 @@ async def fetch_pages(urls: list[str]) -> list[FetchedPage]:
     pages: list[FetchedPage] = []
     for url, result in zip(urls, results):
         if isinstance(result, Exception):
-            pages.append(FetchedPage(url=url, title="", text="", ok=False, error=str(result)[:120]))
+            pages.append(
+                FetchedPage(
+                    url=url,
+                    title="",
+                    text="",
+                    ok=False,
+                    error=str(result)[:DEEP_RESEARCH_ERROR_PREVIEW_MAX_CHARS],
+                )
+            )
         else:
             pages.append(result)
     return pages

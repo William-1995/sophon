@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""Time calculate - natural language to date range."""
+"""Time calculate - natural language to date range.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import re
 import sys
 from datetime import datetime, timedelta, timezone
+from constants import ISO_DATE_YYYY_MM_DD_LEN
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     expr = (args.get("expression") or args.get("expr", "")).strip().lower()
-    base = (args.get("base_date") or "").strip()[:10]
+    base = (args.get("base_date") or "").strip()[:ISO_DATE_YYYY_MM_DD_LEN]
 
     if not expr:
         print(json.dumps({"error": "expression required"}))

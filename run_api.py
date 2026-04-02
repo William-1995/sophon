@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Run FastAPI server: uvicorn api.main:app --reload --port 8080"""
+"""Start the Sophon HTTP API with uvicorn (reload enabled). Port: PORT or config.DEFAULT_API_PORT."""
 import logging
 import os
 import sys
-from pathlib import Path
 
-_root = Path(__file__).resolve().parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
+import bootstrap_paths
 
-API_PORT = int(os.environ.get("PORT", 8080))
+bootstrap_paths.activate()
+
+from config import get_config
+
+API_PORT = get_config().server.api_port
 
 _LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(

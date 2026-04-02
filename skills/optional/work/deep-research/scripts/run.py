@@ -9,33 +9,21 @@ Pipeline:
 
 Does NOT auto-save. Returns report, summary, and sources list so the main
 agent can ask the user whether to save.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
 """
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
-
-import os
-
-_project_root = Path(os.environ.get("SOPHON_ROOT", Path(__file__).resolve().parent.parent.parent.parent.parent))
-_lib_dir = Path(__file__).resolve().parent / "_lib"
-for _p in (_project_root, _lib_dir):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
-
-from config import get_config
-import importlib.util
-_spec = importlib.util.spec_from_file_location(
-    "deep_research_constants",
-    Path(__file__).resolve().parent.parent / "constants.py",
-)
-_c = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_c)
-DB_FILENAME = _c.DB_FILENAME
-from core.executor import execute_skill
+from deep_research_constants import DB_FILENAME
+from core.execution.bridge import execute_skill
 from core.ipc import emit_event, get_reporter
-from providers import get_provider
+from defaults import resolve_deep_research_config
 from planner import plan_research
+from providers import get_provider
 from researcher import research_parallel
 from synthesizer import synthesize
 
@@ -111,7 +99,7 @@ async def _run_deep_research_async(params: dict) -> dict:
     plan = await plan_research(question, provider)
 
     # Phase 2: Research (search → LLM select URLs → crawler fetch)
-    cfg = get_config().deep_research
+    cfg = resolve_deep_research_config()
     notes = await research_parallel(
         plan.sub_questions,
         execute_tool,
@@ -138,6 +126,7 @@ async def _run_deep_research_async(params: dict) -> dict:
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     result = asyncio.run(_run_deep_research_async(params))
     print(json.dumps(result, ensure_ascii=False))

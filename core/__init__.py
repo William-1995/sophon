@@ -1,1 +1,2 @@
-"""Sophon Core - ReAct engine, skill loader, providers."""
+"""Core runtime package."""
+

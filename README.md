@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**[中文文档](README_CN.md)** | **[Contributing](CONTRIBUTING.md)** | **[Discord](your-discord-link)**
+**[README (Chinese)](README_CN.md)** | **[Contributing](CONTRIBUTING.md)** | **[Discord](your-discord-link)**
 
 ---
 
@@ -46,9 +46,9 @@ Sophon uses a **four-tier skill architecture** (aligned with agentskills.io):
 │            │   │           │   │                  │   │                    │
 │ • filesystem│   │ • pdf     │   │ • deep-research  │   │ • emotion-awareness│
 │ • memory   │   │ • word    │   │ • troubleshoot   │   │                    │
-│ • time     │   │ • excel   │   │ • excel-ops      │   │                    │
-│            │   │ • fetch   │   │ [Sub-agents]     │   │                    │
-│            │   │ • search  │   │                  │   │                    │
+│ • time     │   │ • excel   │   │ • personal-work- │   │                    │
+│            │   │ • fetch   │   │   bench          │   │                    │
+│            │   │ • search  │   │ [Sub-agents]     │   │                    │
 │            │   │ • crawler │   │                  │   │                    │
 │            │   │ • metrics │   │                  │   │                    │
 │            │   │ • trace   │   │                  │   │                    │
@@ -59,7 +59,7 @@ Sophon uses a **four-tier skill architecture** (aligned with agentskills.io):
 |------|------|-------------|
 | **Primitives** | `skills/primitives/` | Core building blocks: filesystem, time, memory |
 | **Tools** | `skills/tools/` | pdf, word, excel, fetch, search, crawler, metrics, trace, log-analyze |
-| **Optional/Work** | `skills/optional/work/` | Complex sub-agents: deep-research, troubleshoot, excel-ops |
+| **Optional/Work** | `skills/optional/work/` | Complex sub-agents: deep-research, troubleshoot |
 | **Optional/Entertain** | `skills/optional/entertainment/` | Emotion-awareness and similar |
 
 **Example**: `deep-research` is a sub-agent that plans, dispatches parallel searches, filters results, fetches pages, and synthesizes. The main agent decides *when to invoke it*.
@@ -69,19 +69,16 @@ Sophon uses a **four-tier skill architecture** (aligned with agentskills.io):
 ## Why Sophon?
 
 **Engineering-First Philosophy**
-We believe that complex AI capabilities should be designed, tested, and validated by engineers—not generated on-the-fly by AI. Sophon provides the structure for human-curated intelligence while letting AI focus on orchestration.
+We believe complex assistant behavior should be designed, tested, and validated by engineers—not improvised on-the-fly by prompts alone. Sophon gives AI a structure to operate within while keeping the boundaries clear for humans.
 
-**Zero-Friction Skill Development**
-Drop a `SKILL.md` and script into a folder. Sophon discovers it automatically. No decorators, no registration boilerplate, no framework lock-in. Skills are self-contained, portable, and runtime-agnostic.
+**Protocol-First Workflow**
+Chat, workflow, tools, skills, workspace files, and artifacts all communicate through explicit contracts. The frontend displays protocol state; it does not hardcode business logic.
 
 **Built for Real-World Complexity**
-Sophon handles multi-task workflows through parent-child sessions, supports concurrent task execution, and provides full visibility into what the AI is thinking and doing. Cancel long-running tasks, resume from checkpoints, and maintain full audit trails.
-
-**Safety by Design**
-Process isolation ensures skill crashes don't bring down the system. Capability boundaries prevent AI from escaping defined limits. Every skill executes validated scripts—never arbitrary AI-generated code.
+Sophon handles multi-task workflows through parent-child sessions, supports concurrent task execution, and provides full visibility into what the AI is thinking and doing. Cancel long-running tasks, resume from checkpoints, and maintain full audit trails. Workflow steps can expose real artifact paths so users can download multi-file results as zip archives.
 
 **Local-First, Privacy-First**
-All data stays on your machine in SQLite. No cloud dependencies, no external vector databases. Your conversations, context, and workflows remain entirely under your control.
+All data stays on your machine in SQLite. No cloud dependencies, no external vector databases. Your conversations, context, workflows, and workspace files remain entirely under your control. Workspace uploads default to `workspace/{user}/docs/`, and hidden/system files are filtered from user-facing listings.
 
 ---
 
@@ -98,7 +95,7 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\Act
 # 2. Configure (choose your provider)
 # Configuration files:
 #   - .env (main config, created from .env.example)
-#   - config.py (system parameters and defaults)
+#   - config/ package (system parameters and defaults)
 cp .env.example .env
 # In .env configure exactly one LLM provider:
 #   - DeepSeek (cloud):    DEEPSEEK_API_KEY=...
@@ -107,9 +104,12 @@ cp .env.example .env
 # If multiple are set, Sophon prefers: DeepSeek > Qwen > Ollama.
 
 # 3. Start (installs deps, Playwright, and runs)
-python start.py              # API at http://localhost:8080
+python start.py              # API URL printed on startup (default port: config.DEFAULT_API_PORT)
 
 cd frontend && npm install && npm run dev  # UI at http://localhost:5173
+
+# Optional: one-shot CLI (no web UI; see run_cli.py docstring)
+# python run_cli.py "Your question"
 ```
 
 ---
@@ -134,7 +134,6 @@ Sophon supports complex multi-task workflows through its parent-child session mo
 Built-in feature skills that act as sub-agents:
 - **`deep-research`**: Multi-phase research with parallel fetching, LLM denoising, and synthesized reports with citations
 - **`troubleshoot`**: Correlates logs, traces, and metrics; generates diagnostic charts
-- **`excel-ops`**: Complex Excel manipulations with AI assistance
 
 **Skill Composition**
 Engineers can build sophisticated capabilities by composing existing skills:
@@ -146,7 +145,7 @@ Engineers can build sophisticated capabilities by composing existing skills:
 **Engineering-First Design**
 - **Human-curated capabilities**: Complex skills designed, tested, and validated by engineers
 - **Structured abstraction**: Clear boundaries between what AI decides vs what skills execute
-- **Human-in-the-loop (HITL)**: Two modes — (1) generic `request_human_decision` tool: the main agent invokes it when it needs user input; (2) skill-triggered two-phase flow: skills return `__decision_request` (e.g. delete confirmation). Frontend shows modal; user choice flows via `_decision_choice`. Skills can signal early exit with `_abort_run`.
+- **Human-in-the-loop (HITL)**: Two modes — (1) optional `request_human_decision` (off by default; set `SOPHON_HITL_ENABLED=1` to let the model ask multi-choice questions); (2) skill-triggered two-phase flow: skills return `__decision_request` (e.g. delete confirmation, always available). Frontend shows modal; user choice flows via `_decision_choice`. Skills can signal early exit with `_abort_run`.
 - **Predictable behavior**: No arbitrary code generation or execution
 
 **Security & Safety**
@@ -215,7 +214,6 @@ Built-in voice input using faster-whisper (local, no cloud):
 |-------|-------------|
 | `deep-research` | Multi-phase research: plan → parallel fetch → synthesis |
 | `troubleshoot` | Root-cause analysis across logs, traces, metrics |
-| `excel-ops` | Fill workbook columns from web/search with LLM extraction |
 
 **Optional/Entertainment** (`skills/optional/entertainment/`)
 | Skill | Description |
@@ -286,8 +284,11 @@ See [docs/create-skill.md](docs/create-skill.md) for the complete guide.
 
 ## Documentation
 
-- **[Architecture](docs/ARCHITECTURE.md)** - Technical architecture and design
+- **[Design Principles](docs/PRINCIPLES.md)** - What Sophon is trying to be and what it should not become
+- **[Architecture](docs/ARCHITECTURE.md)** - Technical contracts and runtime boundaries
+- **[Ecosystem Compatibility](docs/ECOSYSTEM_COMPATIBILITY.md)** - How Sophon maps to Claude Code, Codex, and MCP ecosystems
 - **[API Reference](docs/API.md)** - HTTP API endpoints
+- **[Roadmap](docs/ROADMAP.md)** - 0.2 / 0.2.1 / 0.3 direction
 - **[Creating Skills](docs/create-skill.md)** - Skill authoring guide
 
 ## Provider Configuration (LLM backends)

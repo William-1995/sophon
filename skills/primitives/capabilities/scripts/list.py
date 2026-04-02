@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Return Sophon intro and skill names only. LLM summarizes for the user."""
+"""Return Sophon intro and skill names only. LLM summarizes for the user.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import logging
 import sys

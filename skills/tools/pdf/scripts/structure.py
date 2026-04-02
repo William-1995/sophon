@@ -1,23 +1,31 @@
 #!/usr/bin/env python3
-"""Return PDF structure: page count, metadata, outline (TOC). No text extraction."""
+"""Return PDF structure: page count, metadata, outline (TOC). No text extraction.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import base64
 import json
 import sys
 from pathlib import Path
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-_SKILL_DIR = _SCRIPTS_DIR.parent
-if str(_SKILL_DIR) not in sys.path:
-    sys.path.insert(0, str(_SKILL_DIR))
+from common.path_utils import ensure_in_workspace as _ensure_in_workspace
+
+try:
+    from constants import PDF_MAX_PAGES
+except ImportError:
+    PDF_MAX_PAGES = 500
 
 
-
-def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
-    try:
-        target.resolve().relative_to(workspace_root.resolve())
-        return True
-    except ValueError:
-        return False
+def _coerce_optional_str(val: object) -> str:
+    """Tool args may be str or a single-element list from malformed JSON."""
+    if val is None:
+        return ""
+    if isinstance(val, list):
+        if len(val) == 1 and val[0] is not None:
+            return str(val[0]).strip()
+        return ""
+    return str(val).strip()
 
 
 def _flatten_outline(outline, reader, result: list, level: int = 0) -> None:
@@ -40,6 +48,21 @@ def _flatten_outline(outline, reader, result: list, level: int = 0) -> None:
                 result.append({"title": str(title), "page": page_num, "level": level})
             except Exception:
                 pass
+
+
+def _suggest_page_ranges(total_pages: int, chunk_size: int | None = None) -> list[str] | None:
+    if total_pages <= 0:
+        return None
+    size = chunk_size or PDF_MAX_PAGES
+    if total_pages <= size:
+        return None
+    ranges: list[str] = []
+    start = 1
+    while start <= total_pages:
+        end = min(start + size - 1, total_pages)
+        ranges.append(f"{start}-{end}")
+        start = end + 1
+    return ranges
 
 
 def _get_structure(data: bytes) -> dict:
@@ -66,20 +89,26 @@ def _get_structure(data: bytes) -> dict:
     except Exception:
         pass
 
-    return {
+    result = {
         "pages": total,
         "metadata": metadata,
         "outline": outline_flat if outline_flat else None,
     }
+    suggested_ranges = _suggest_page_ranges(total)
+    if suggested_ranges:
+        result["suggested_page_ranges"] = suggested_ranges
+        result["recommended_chunk_size"] = PDF_MAX_PAGES
+    return result
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     workspace_root = Path(params.get("workspace_root", ""))
 
-    path = (args.get("path") or "").strip()
-    content_base64 = (args.get("content_base64") or "").strip()
+    path = _coerce_optional_str(args.get("path"))
+    content_base64 = _coerce_optional_str(args.get("content_base64"))
 
     if path and content_base64:
         print(json.dumps({"error": "Provide path OR content_base64, not both"}))

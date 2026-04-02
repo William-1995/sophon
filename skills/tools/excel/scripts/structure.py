@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Return sheet structure: headers and total row count (no data)."""
+"""Return sheet structure: headers and total row count (no data).
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
 from pathlib import Path
+
+from core.execution.arg_coerce import MISSING_WORKBOOK_PATH_HELP, workbook_path_from_tool_stdin
 
 try:
     import openpyxl
@@ -84,11 +90,11 @@ def structure_xls(full_path: Path, sheet: str | int | None) -> dict:
 def main() -> None:
     params = json.load(sys.stdin)
     args = params.get("arguments") or params
-    file_path = args.get("file", "").strip()
+    file_path = workbook_path_from_tool_stdin(params)
     sheet = args.get("sheet", args.get("sheet_name"))
 
     if not file_path:
-        print(json.dumps({"error": "file parameter is required"}))
+        print(json.dumps({"error": MISSING_WORKBOOK_PATH_HELP}, ensure_ascii=False))
         return
 
     full_path = _resolve_path(params, file_path)

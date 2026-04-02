@@ -1,6 +1,4 @@
-"""
-Deep Research - System prompts for LLM calls.
-"""
+"""System prompt strings for deep-research LLM stages (denoise, URL selection)."""
 
 # URL filtering prompt
 DENOISE_SYSTEM = (
@@ -13,7 +11,7 @@ DENOISE_SYSTEM = (
     "Use exact URLs from the list."
 )
 
-# URL selection prompt  
+# URL selection prompt
 URL_SELECT_SYSTEM_TEMPLATE = (
     "You are a research assistant. Given search results for a sub-question, "
     "select ONLY URLs that DIRECTLY discuss the topic. STRICTLY EXCLUDE irrelevant results: "

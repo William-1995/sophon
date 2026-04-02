@@ -9,6 +9,9 @@ metadata:
 
 ## Orchestration Guidance
 
+- Runtime defaults are local to this skill (see `defaults.py` in the skill folder).
+- Keep this skill removable without affecting top-level app config.
+
 Use when the user asks for in-depth research, comprehensive analysis, or a structured report on a topic.
 
 After `run` returns:

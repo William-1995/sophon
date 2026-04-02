@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""HTTP GET - fetch URL and return content. Used for PDF/Word/Excel before parse tools."""
+"""HTTP GET - fetch URL and return content. Used for PDF/Word/Excel before parse tools.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import base64
 import json
 import sys
-from pathlib import Path
 from typing import Any
-
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-_SKILL_DIR = _SCRIPTS_DIR.parent
-if str(_SKILL_DIR) not in sys.path:
-    sys.path.insert(0, str(_SKILL_DIR))
 
 try:
     from constants import (
@@ -21,6 +19,7 @@ try:
         FETCH_MIN_MAX_BYTES,
         FETCH_MIN_TIMEOUT_SEC,
         OBSERVATION_PREVIEW_LEN,
+        PROGRESS_URL_DISPLAY_MAX_CHARS,
     )
 except ImportError:
     FETCH_DEFAULT_TIMEOUT_SEC = 30
@@ -37,6 +36,7 @@ except ImportError:
         "video/",
     )
     OBSERVATION_PREVIEW_LEN = 500
+    PROGRESS_URL_DISPLAY_MAX_CHARS = 80
 
 
 def _is_binary_content(content_type: str) -> bool:
@@ -80,6 +80,7 @@ def _fetch_url(url: str, timeout_sec: int, max_bytes: int) -> dict[str, Any]:
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     url = (args.get("url") or "").strip()
@@ -99,7 +100,11 @@ def main() -> None:
         if r:
             r.emit(
                 "progress",
-                {"phase": "fetch", "url": url[:80], "display_text": f"Fetching: {url[:80]}"},
+                {
+                    "phase": "fetch",
+                    "url": url[:PROGRESS_URL_DISPLAY_MAX_CHARS],
+                    "display_text": f"Fetching: {url[:PROGRESS_URL_DISPLAY_MAX_CHARS]}",
+                },
             )
     except Exception:
         pass

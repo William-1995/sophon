@@ -33,4 +33,4 @@ playwright install chromium
 ## Role
 
 - Scrape SPAs and dynamic pages
-- Used by deep-research, excel-ops
+- Used by deep-research and multi-step workflows

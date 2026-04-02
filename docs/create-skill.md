@@ -182,7 +182,7 @@ for _p in (_project_root, _lib_dir):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from core.executor import execute_skill
+from core.execution.bridge import execute_skill
 from core.providers import get_provider
 
 logger = logging.getLogger(__name__)
@@ -235,7 +235,7 @@ if __name__ == "__main__":
 
 ## Expose the Skill
 
-Add the skill name to `config.py` so it appears in the UI and skill selector:
+Add the skill name to `config/` package so it appears in the UI and skill selector:
 
 ```python
 @dataclass(frozen=True)

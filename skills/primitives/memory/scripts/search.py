@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""Keyword search across all conversation history (user messages only)."""
+"""Keyword search across all conversation history (user messages only).
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
-_script_dir = Path(__file__).resolve().parent
-_skill_dir = _script_dir.parent
-_primitives = _skill_dir.parent
-_root = _primitives.parent.parent
-for p in (_skill_dir, _primitives, _root):
-    if str(p) not in sys.path:
-        sys.path.insert(0, str(p))
-
 from common import resolve_db_path
+from defaults import MEMORY_SEARCH_DEFAULT_LIMIT
+from _scope import resolve_scoped_session_ids
 
 _CONTENT_PREVIEW = 200
 
@@ -59,12 +57,15 @@ def _search(
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     db_path = resolve_db_path(params)
     keyword = str(args.get("keyword", "")).strip()
     limit = args.get("limit")
-    if limit is not None:
+    if limit is None:
+        limit = MEMORY_SEARCH_DEFAULT_LIMIT
+    else:
         limit = int(limit)
 
     if not db_path.exists():
@@ -80,11 +81,7 @@ def main() -> None:
         }))
         return
 
-    scope_ids = params.get("_memory_scope_session_ids")
-    if isinstance(scope_ids, list):
-        pass
-    else:
-        scope_ids = None
+    scope_ids = resolve_scoped_session_ids(params, args.get("session_id") or params.get("session_id"))
     results = _search(db_path, keyword, limit, scope_session_ids=scope_ids)
     lines = [f"count={len(results)} keyword={keyword}"]
     lines.extend(f"[{r['time']}] {r['content']}" for r in results)

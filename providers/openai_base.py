@@ -5,15 +5,15 @@ Provides a reusable implementation for providers that use the OpenAI API format,
 including message formatting, surrogate character cleaning, and tool calling.
 """
 
+import asyncio
 import logging
+import random
 from typing import Any
-
 import httpx
-
+from constants import LLM_HTTP_MAX_ATTEMPTS, LLM_HTTP_RETRY_BASE_DELAY
 from providers.base import BaseProvider
 
 logger = logging.getLogger(__name__)
-
 _TOOL_CHOICE_REQUIRED = "required"
 
 
@@ -121,14 +121,77 @@ class OpenAICompatibleProvider(BaseProvider):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(
-                url,
-                headers=headers,
-                json=body,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        timeout_cfg = httpx.Timeout(
+            connect=30.0,
+            read=float(self.timeout),
+            write=min(300.0, float(self.timeout)),
+            pool=10.0,
+        )
+        max_attempts = max(1, int(LLM_HTTP_MAX_ATTEMPTS))
+        data: dict[str, Any] | None = None
+        last_exc: BaseException | None = None
+
+        for attempt in range(max_attempts):
+            try:
+                limits = (
+                    httpx.Limits(max_keepalive_connections=0, max_connections=10)
+                    if attempt > 0
+                    else httpx.Limits(max_keepalive_connections=20, max_connections=100)
+                )
+                async with httpx.AsyncClient(timeout=timeout_cfg, limits=limits) as client:
+                    resp = await client.post(
+                        url,
+                        headers=headers,
+                        json=body,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                break
+            except httpx.HTTPStatusError as e:
+                last_exc = e
+                code = e.response.status_code if e.response is not None else 0
+                if code in (429, 502, 503, 504) and attempt + 1 < max_attempts:
+                    delay = min(
+                        30.0,
+                        LLM_HTTP_RETRY_BASE_DELAY * (2**attempt) + random.uniform(0, 0.35),
+                    )
+                    logger.warning(
+                        "llm_http_retry status=%s attempt=%s/%s sleep=%.2fs",
+                        code,
+                        attempt + 1,
+                        max_attempts,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise
+            except (
+                httpx.RemoteProtocolError,
+                httpx.ReadError,
+                httpx.ConnectError,
+                httpx.TimeoutException,
+                httpx.WriteError,
+            ) as e:
+                last_exc = e
+                if attempt + 1 < max_attempts:
+                    delay = min(
+                        30.0,
+                        LLM_HTTP_RETRY_BASE_DELAY * (2**attempt) + random.uniform(0, 0.35),
+                    )
+                    logger.warning(
+                        "llm_transport_retry attempt=%s/%s err=%s sleep=%.2fs",
+                        attempt + 1,
+                        max_attempts,
+                        e,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise
+
+        if data is None:
+            assert last_exc is not None
+            raise last_exc
 
         msg = (data.get("choices") or [{}])[0].get("message") or {}
         result: dict[str, Any] = {

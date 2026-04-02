@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""Convert Excel (.xlsx, .xls) to CSV. Writes to output_path.
+"""Convert Excel (``.xlsx`` / ``.xls``) to CSV at ``output_path``.
 
-Reads input via path or params, writes to output_path. Requires openpyxl for .xlsx
-and xlrd for .xls.
+Requires ``openpyxl`` for ``.xlsx`` and ``xlrd`` for ``.xls``. Workbook path is resolved
+via ``workbook_path_from_tool_stdin``.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
 """
 import csv
 import json
 import sys
 from pathlib import Path
+
+from common.path_utils import ensure_in_workspace as _ensure_in_workspace
+
+from core.execution.arg_coerce import MISSING_WORKBOOK_PATH_HELP, workbook_path_from_tool_stdin
 
 try:
     import openpyxl
@@ -31,14 +38,6 @@ def _resolve_path(params: dict, file_path: str) -> Path:
     if p.parts and p.parts[0] == user_id:
         p = Path(*p.parts[1:]) if len(p.parts) > 1 else Path(".")
     return workspace_root / p
-
-
-def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
-    try:
-        target.resolve().relative_to(workspace_root.resolve())
-        return True
-    except ValueError:
-        return False
 
 
 def _xlsx_to_csv(file_path: Path, sheet: str | int) -> tuple[list[dict], int]:
@@ -80,14 +79,15 @@ def _xls_to_csv(file_path: Path, sheet: str | int) -> tuple[list[dict], int]:
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.load(sys.stdin)
     args = params.get("arguments") or params
-    file_path = (args.get("file") or args.get("path") or "").strip()
+    file_path = workbook_path_from_tool_stdin(params)
     output_path = (args.get("output_path") or "").strip() or None
     sheet = args.get("sheet", 0)
 
     if not file_path:
-        print(json.dumps({"error": "file (or path) is required"}))
+        print(json.dumps({"error": MISSING_WORKBOOK_PATH_HELP}, ensure_ascii=False))
         return
     if not output_path:
         print(json.dumps({"error": "output_path is required to write CSV"}))

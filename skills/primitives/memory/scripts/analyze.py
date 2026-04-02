@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""Analyze user messages within a time range."""
+"""Analyze user messages within a time range.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sqlite3
 import sys
 from datetime import datetime
-from pathlib import Path
-
-_script_dir = Path(__file__).resolve().parent
-_skill_dir = _script_dir.parent
-_primitives = _skill_dir.parent
-_root = _primitives.parent.parent
-for p in (_skill_dir, _primitives, _root):
-    if str(p) not in sys.path:
-        sys.path.insert(0, str(p))
 
 from common import resolve_db_path
-
-_CONTENT_PREVIEW = 200
+from defaults import (
+    END_OF_DAY_INCLUSIVE_OFFSET_SECONDS,
+    ISO_DATE_YYYY_MM_DD_LEN,
+    MEMORY_USER_CONTENT_SNIPPET_MAX_CHARS,
+)
+from _scope import resolve_scoped_session_ids
 
 
 def _parse_time(value: str, end_of_day: bool = False) -> float:
@@ -24,11 +23,14 @@ def _parse_time(value: str, end_of_day: bool = False) -> float:
     try:
         return float(value)
     except ValueError:
-        ts = datetime.strptime(value[:10], "%Y-%m-%d").timestamp()
-        return ts + 86399 if end_of_day else ts
+        ts = datetime.strptime(
+            value[:ISO_DATE_YYYY_MM_DD_LEN], "%Y-%m-%d"
+        ).timestamp()
+        return ts + END_OF_DAY_INCLUSIVE_OFFSET_SECONDS if end_of_day else ts
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     db_path = resolve_db_path(params)
@@ -49,7 +51,7 @@ def main() -> None:
         print(json.dumps({"error": f"Invalid date format: {exc}"}))
         return
 
-    scope_ids = params.get("_memory_scope_session_ids")
+    scope_ids = resolve_scoped_session_ids(params, params.get("session_id"))
     if isinstance(scope_ids, list) and scope_ids:
         placeholders = ",".join("?" * len(scope_ids))
         sql = (
@@ -74,7 +76,7 @@ def main() -> None:
         {
             "session_id": r["session_id"],
             "time": datetime.fromtimestamp(r["created_at"]).strftime("%Y-%m-%d %H:%M"),
-            "content": r["content"][:_CONTENT_PREVIEW],
+            "content": r["content"][:MEMORY_USER_CONTENT_SNIPPET_MAX_CHARS],
         }
         for r in rows
         if not (r["content"] or "").startswith("[Background] ")

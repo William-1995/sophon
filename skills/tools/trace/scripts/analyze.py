@@ -1,35 +1,34 @@
 #!/usr/bin/env python3
-"""Trace analyze - statistical analysis of traces (SQLite-based)."""
+"""Trace analyze - statistical analysis of traces (SQLite-based).
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sqlite3
 import sys
 from collections import Counter
 from pathlib import Path
 
-# Add skill root for constants
-_skill_root = Path(__file__).resolve().parent.parent
-if str(_skill_root) not in sys.path:
-    sys.path.insert(0, str(_skill_root))
+from common.db_utils import resolve_db_path
 
-from constants import DB_FILENAME
-
-
-def _resolve_db_path(params: dict) -> Path:
-    p = params.get("db_path")
-    if p:
-        return Path(p)
-    return Path(params.get("workspace_root", "")) / DB_FILENAME
+from constants import (
+    TRACE_ANALYZE_DEFAULT_ROW_LIMIT,
+    TRACE_ANALYZE_ERROR_SAMPLE_MAX,
+    TRACE_ANALYZE_SLOWEST_OPS_COUNT,
+)
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
-    db_path = _resolve_db_path(params)
+    db_path = resolve_db_path(params)
     session_id = args.get("session_id") or params.get("session_id")
     if session_id is not None and isinstance(session_id, str):
         session_id = session_id.strip() or None
     metric = (args.get("metric") or "duration").strip()
-    limit = int(args.get("limit", params.get("limit", 1000)))
+    limit = int(args.get("limit", params.get("limit", TRACE_ANALYZE_DEFAULT_ROW_LIMIT)))
 
     if not db_path.exists():
         print(json.dumps({"error": "Database not initialized"}))
@@ -76,7 +75,7 @@ def main() -> None:
         total = sum(d for _, d, _ in durations)
         slowest = [
             {"operation": op, "duration_ms": d, "span_id": sid, "percentage": round(d / total * 100, 1) if total else 0}
-            for op, d, sid in durations[:10]
+            for op, d, sid in durations[:TRACE_ANALYZE_SLOWEST_OPS_COUNT]
         ]
         result = {
             "metric": "duration",
@@ -107,7 +106,10 @@ def main() -> None:
             "total_spans": len(rows),
             "error_count": len(errs),
             "error_rate": round(len(errs) / len(rows) * 100, 1) if rows else 0,
-            "errors": [{"id": r.get("id"), "skill": r.get("skill"), "action": r.get("action")} for r in errs[:20]],
+            "errors": [
+                {"id": r.get("id"), "skill": r.get("skill"), "action": r.get("action")}
+                for r in errs[:TRACE_ANALYZE_ERROR_SAMPLE_MAX]
+            ],
         }
     else:
         result = {"error": f"Unknown metric: {metric}. Use duration, operations, or errors."}

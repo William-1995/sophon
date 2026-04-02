@@ -1,20 +1,11 @@
 #!/usr/bin/env python3
 """
-Filesystem Read - Read file content from workspace.
+Read text from a workspace file with pagination, tail, regex filter, and encoding.
 
-Reads text files with support for:
-- Line offset and limit (pagination)
-- Tail reading (last N lines)
-- Regex filtering
-- Custom encodings
+Paths are resolved inside ``workspace_root`` to block traversal outside the workspace.
 
-Security:
-- Path traversal protection (ensures target is within workspace)
-- Encoding error handling
-
-Example:
-    $ echo '{"path": "document.txt", "limit": 100}' | python read.py
-    {"path": "document.txt", "total_lines": 500, "displayed_lines": 100, "content": "..."}
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
 """
 
 import json
@@ -22,12 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-# Add skill root first (for constants), then project root
-_skill_root = Path(__file__).resolve().parent.parent
-_root = _skill_root.parent.parent.parent
-for p in (_skill_root, _root):
-    if str(p) not in sys.path:
-        sys.path.insert(0, str(p))
+from common.path_utils import ensure_in_workspace as _ensure_in_workspace
 
 from constants import DEFAULT_ENCODING
 
@@ -44,26 +30,6 @@ DEFAULT_TAIL = 0   # 0 means disabled
 # ---------------------------------------------------------------------------
 # Private API
 # ---------------------------------------------------------------------------
-
-def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
-    """Check if target path is within workspace directory.
-
-    Prevents directory traversal attacks by ensuring the resolved target
-    is a subpath of the resolved workspace root.
-
-    Args:
-        workspace_root: Root directory of the workspace.
-        target: File path to check.
-
-    Returns:
-        True if target is within workspace, False otherwise.
-    """
-    try:
-        target.resolve().relative_to(workspace_root.resolve())
-        return True
-    except ValueError:
-        return False
-
 
 def _apply_filters(
     lines: list[str],

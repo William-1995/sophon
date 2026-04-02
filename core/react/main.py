@@ -8,26 +8,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from constants import SophonSkillEventType
 from core.react.types import CancelCheck, DecisionWaiter, EventSink, ProgressCallback
 from providers import BaseProvider
-from core.react.context import ImmutableRunContext, MutableRunState
+from core.react.context import MutableRunState
 from core.react.preparation import prepare_react_run
 from core.react.rounds import run_react_rounds
 from core.react.utils import dedupe_references, emit_progress
 from core.react.finalization import finalize_react_answer
 
 logger = logging.getLogger(__name__)
-
-
-# Re-export for external use
-from core.react.tool_parsing import (  # noqa: E402
-    get_round_action,
-    parse_native_tool_call,
-    parse_single_tool_call,
-    process_llm_response,
-    resolve_call_items,
-)
-
 
 async def run_react(
     question: str,
@@ -36,6 +26,7 @@ async def run_react(
     session_id: str = "default",
     user_id: str = "default_user",
     skill_filter: str | None = None,
+    fixed_selected_skills: list[str] | None = None,
     context: list[dict] | None = None,
     db_path: Path | None = None,
     progress_callback: ProgressCallback = None,
@@ -55,6 +46,8 @@ async def run_react(
         session_id: Session ID.
         user_id: User ID.
         skill_filter: If set, restrict to this skill (skip round-1 selection).
+        fixed_selected_skills: If set (and skill_filter is None), skip round-1 selection and
+            load these primary skills plus dependencies (workflow / fixed toolbelt).
         context: Conversation context (recent messages).
         db_path: Optional DB path.
         progress_callback: Called after each LLM call with (tokens, round_num).
@@ -82,14 +75,30 @@ async def run_react(
         resume_checkpoint=resume_checkpoint,
         run_id=run_id,
         decision_waiter=decision_waiter,
+        fixed_selected_skills=fixed_selected_skills,
     )
+
+    def _wrap_event_sink(sink: EventSink | None, st: MutableRunState) -> EventSink | None:
+        """Forward events; when PLAN_CONFIRMED, set plan_confirmed (event-driven, no skill hardcoding)."""
+        if not sink:
+            return None
+        def _on_event(evt: dict[str, Any]) -> None:
+            if evt.get("type") == SophonSkillEventType.PLAN_CONFIRMED and st is not None:
+                st.plan_confirmed = True
+                logger.debug("[react] %s -> plan_confirmed=True", SophonSkillEventType.PLAN_CONFIRMED)
+            try:
+                sink(evt)
+            except Exception as e:
+                logger.debug("[react] event_sink error: %s", e)
+        return _on_event
+
     await run_react_rounds(
         provider=provider,
         ctx=ctx,
         state=state,
         cancel_check=cancel_check,
         progress_callback=progress_callback,
-        event_sink=event_sink,
+        event_sink=_wrap_event_sink(event_sink, state),
         run_id=run_id,
         decision_waiter=decision_waiter,
     )

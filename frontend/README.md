@@ -1,11 +1,77 @@
-# React + TypeScript + Vite
+# Sophon frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React, TypeScript, and Vite. Chat, workflows, and runtime status against the local API.
 
-Currently, two official plugins are available:
+## Quick Start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+npm install
+npm run dev
+```
+
+## Co-work Components
+
+### Basic Usage
+
+```tsx
+import { StatusMonitor, useWorkflow, useSSE } from './components';
+
+function App() {
+  const { workflowState, run, pause, resume, stop } = useWorkflow();
+  const { isConnected } = useSSE(workflowState?.instance_id);
+
+  if (!workflowState) {
+    return <button onClick={() => run({ 
+      workflow_id: 'research', 
+      input_data: { query: 'test' } 
+    })}>Start Workflow</button>;
+  }
+
+  return (
+    <StatusMonitor 
+      workflowState={workflowState}
+      onPause={pause}
+      onResume={resume}
+      onStop={stop}
+    />
+  );
+}
+```
+
+### Available Components
+
+- **StatusMonitor** - Main dashboard (workflow status, steps, batch progress, artifacts)
+- **AgentPanel** - List of active agents
+- **MessageStream** - Real-time message feed
+- **RuntimeControls** - Pause/Resume/Stop buttons
+
+### Hooks
+
+- `useWorkflow()` - Manage workflow lifecycle
+- `useSSE(instanceId)` - Real-time updates via Server-Sent Events
+
+## Workflow Types
+
+- `research` - Search → Crawl → Analyze
+- `transform` - Format conversion (CSV/PDF/Markdown/Word)
+- `validate` - Data quality checking
+- `discuss` - Multi-agent discussion until consensus
+
+## API
+
+Backend port defaults to `DEFAULT_API_PORT` in the repo `config/` package (override with `PORT`). The Vite dev proxy uses `VITE_SOPHON_API_PORT` or `PORT` if set, with the same default as the `config/` package.
+
+Key endpoints:
+- `POST /api/v1/workflows/{id}/run` - Start workflow
+- `GET /api/v1/instances/{id}/stream` - SSE real-time updates
+
+## Workspace Protocol
+
+- Local files can be attached in batches and uploaded to the user workspace `docs/` directory by default.
+- Workflow results expose artifact paths through the shared protocol so the UI can render/download multi-file outputs without hardcoding file types.
+- Workspace listings hide system files and database files; the UI only shows user-visible files.
+
+---
 
 ## React Compiler
 

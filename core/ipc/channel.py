@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 from queue import Empty, Queue
 from typing import Any
 
-from constants import IPC_BUFFER_READ_SIZE
+from constants import IPC_BUFFER_READ_SIZE, IPC_MESSAGE_LENGTH_PREFIX_BYTES
 from core.ipc.serializers import JsonSerializer, MessagePackSerializer
 
 logger = logging.getLogger(__name__)
@@ -54,13 +54,16 @@ def _reader_thread(
                         del buffer[: line_end + 1]
                         obj = serializer.unpack(line)
                     else:
-                        if len(buffer) < 4:
+                        if len(buffer) < IPC_MESSAGE_LENGTH_PREFIX_BYTES:
                             break
-                        length = int.from_bytes(buffer[:4], "big")
-                        if len(buffer) < 4 + length:
+                        length = int.from_bytes(
+                            buffer[:IPC_MESSAGE_LENGTH_PREFIX_BYTES], "big"
+                        )
+                        need = IPC_MESSAGE_LENGTH_PREFIX_BYTES + length
+                        if len(buffer) < need:
                             break
-                        frame = bytes(buffer[: 4 + length])
-                        del buffer[: 4 + length]
+                        frame = bytes(buffer[:need])
+                        del buffer[:need]
                         obj = serializer.unpack(frame)
                     if obj and SOPHON_EVENT_KEY in obj:
                         queue.put(obj[SOPHON_EVENT_KEY])

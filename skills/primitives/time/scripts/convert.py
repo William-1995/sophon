@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Time convert - convert timestamp between timezones."""
+"""Time convert - convert timestamp between timezones.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+from constants import ISO_DATE_YYYY_MM_DD_LEN
 
 try:
     from zoneinfo import ZoneInfo
@@ -19,7 +24,7 @@ def _parse_timestamp(ts: str):
         except (ValueError, TypeError):
             continue
     try:
-        return datetime.strptime(ts[:10], "%Y-%m-%d")
+        return datetime.strptime(ts[:ISO_DATE_YYYY_MM_DD_LEN], "%Y-%m-%d")
     except ValueError:
         return None
 
@@ -38,6 +43,7 @@ def _to_tz(dt: datetime, tz_name: str) -> datetime:
 
 
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     args = params.get("arguments", params)
     ts = (args.get("timestamp") or "").strip()

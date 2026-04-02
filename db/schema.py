@@ -133,6 +133,80 @@ CREATE TABLE IF NOT EXISTS run_checkpoints (
 );
 CREATE INDEX IF NOT EXISTS idx_checkpoints_run ON run_checkpoints(run_id);
 CREATE INDEX IF NOT EXISTS idx_checkpoints_session ON run_checkpoints(session_id);
+
+-- Workflow Definitions: workflow definition storage
+CREATE TABLE IF NOT EXISTS workflows (
+    workflow_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    version TEXT DEFAULT '1.0.0',
+    definition_json TEXT NOT NULL,
+    input_schema_json TEXT,
+    output_schema_json TEXT,
+    cleanup_policy_json TEXT,
+    tags_json TEXT,
+    is_template BOOLEAN DEFAULT 0,
+    created_by TEXT,
+    created_at REAL DEFAULT (unixepoch()),
+    updated_at REAL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_workflows_template ON workflows(is_template);
+
+-- Workflow Instances: runtime instances
+CREATE TABLE IF NOT EXISTS workflow_instances (
+    instance_id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflows(workflow_id),
+    parent_session_id TEXT,
+    status TEXT CHECK (status IN ('queued', 'running', 'paused', 'completed', 'failed')),
+    current_step_id TEXT,
+    input_data_json TEXT NOT NULL,
+    state_json TEXT,
+    output_data_json TEXT,
+    error_message TEXT,
+    created_at REAL DEFAULT (unixepoch()),
+    started_at REAL,
+    completed_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_instances_workflow ON workflow_instances(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_instances_parent ON workflow_instances(parent_session_id);
+CREATE INDEX IF NOT EXISTS idx_instances_status ON workflow_instances(status);
+
+-- Workflow Step Executions: step execution records
+CREATE TABLE IF NOT EXISTS workflow_step_executions (
+    execution_id TEXT PRIMARY KEY,
+    instance_id TEXT NOT NULL REFERENCES workflow_instances(instance_id),
+    step_id TEXT NOT NULL,
+    agent_type TEXT,
+    input_artifact_path TEXT,
+    output_artifact_path TEXT,
+    status TEXT CHECK (status IN ('queued', 'running', 'paused', 'completed', 'failed', 'retrying')),
+    retry_count INTEGER DEFAULT 0,
+    output_data_json TEXT,
+    error_message TEXT,
+    convergence_status TEXT,
+    log_session_id TEXT,
+    created_at REAL DEFAULT (unixepoch()),
+    started_at REAL,
+    completed_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_step_executions_instance ON workflow_step_executions(instance_id);
+CREATE INDEX IF NOT EXISTS idx_step_executions_status ON workflow_step_executions(status);
+
+-- Workflow Artifacts: file artifacts
+CREATE TABLE IF NOT EXISTS workflow_artifacts (
+    artifact_id TEXT PRIMARY KEY,
+    instance_id TEXT NOT NULL REFERENCES workflow_instances(instance_id),
+    step_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_type TEXT,
+    file_size INTEGER,
+    schema_name TEXT,
+    is_intermediate BOOLEAN DEFAULT 1,
+    created_at REAL DEFAULT (unixepoch()),
+    expires_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_artifacts_instance ON workflow_artifacts(instance_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_expires ON workflow_artifacts(expires_at);
 """
 
 _FTS_SQL = """
@@ -192,6 +266,12 @@ def init_db(db_path: Path) -> None:
     conn = sqlite3.connect(str(db_path))
     try:
         conn.executescript(_SCHEMA_SQL)
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO workflows (workflow_id, name, description, definition_json)
+            VALUES ('auto', 'Auto', 'Instances created from natural-language planner', '{}')
+            """
+        )
         conn.commit()
         _add_memory_references_column(conn)
         _ensure_memory_fts(conn)

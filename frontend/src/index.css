@@ -1,39 +1,158 @@
+/**
+ * Design tokens — system theme by default, warm/dark/light optional
+ */
+
 :root {
-  --bg: #0a0e12;
-  --fg: #e8ecf0;
-  --muted: #8b939e;
-  --border: #1e252d;
-  --hover: #151b22;
-  --accent: #58a6ff;
-  --accent-dim: rgba(88, 166, 255, 0.2);
-  --user-bg: #141920;
-  --msg-bg: #11171d;
-  --code-bg: #1a2129;
-  --input-bg: #0d1117;
-  --dropdown-bg: #161b22;
-  --radius: 10px;
-  --radius-sm: 6px;
-  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', monospace;
+  color-scheme: light dark;
+  --app-header-height: 48px;
+  --sidebar-width: 260px;
+  --chat-composer-max: min(1600px, 100%);
+
+  /* 4-based spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+
+  --font-body:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Monaco, monospace;
+
+  /* System light theme as default */
+  --bg: rgba(255, 255, 255, 0.84);
+  --bg-gradient-from: rgba(255, 255, 255, 0.95);
+  --bg-gradient-to: rgba(248, 248, 248, 0.88);
+  --fg: #1f2328;
+  --muted: #6f7680;
+  --border: rgba(31, 35, 40, 0.10);
+  --border-soft: rgba(31, 35, 40, 0.06);
+  --hover: rgba(31, 35, 40, 0.045);
+  --accent: #5f7f96;
+  --accent-dim: rgba(95, 127, 150, 0.14);
+  --user-bg: rgba(244, 246, 248, 0.82);
+  --msg-bg: rgba(255, 255, 255, 0.72);
+  --code-bg: rgba(248, 249, 250, 0.92);
+  --input-bg: rgba(255, 255, 255, 0.86);
+  --dropdown-bg: rgba(255, 255, 255, 0.94);
+  --shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.04), 0 2px 8px rgba(31, 35, 40, 0.04);
+  --shadow-md: 0 4px 24px rgba(31, 35, 40, 0.07);
 }
 
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #f6f8fa;
-    --fg: #1f2328;
-    --muted: #656d76;
-    --border: #d8dee4;
-    --hover: #eaeef2;
-    --accent: #0969da;
-    --accent-dim: rgba(9, 105, 218, 0.15);
-    --user-bg: #e7ebf0;
-    --msg-bg: #ffffff;
-    --code-bg: #eaeef2;
-    --input-bg: #ffffff;
-    --dropdown-bg: #ffffff;
+    --bg: rgba(14, 13, 12, 0.92);
+    --bg-gradient-from: rgba(18, 17, 16, 0.98);
+    --bg-gradient-to: rgba(14, 12, 10, 0.96);
+    --fg: #eceae8;
+    --muted: #9c9893;
+    --border: rgba(255, 255, 255, 0.09);
+    --border-soft: rgba(255, 255, 255, 0.055);
+    --hover: rgba(255, 255, 255, 0.055);
+    --accent: #8fb8d4;
+    --accent-dim: rgba(143, 184, 212, 0.2);
+    --user-bg: rgba(28, 26, 24, 0.88);
+    --msg-bg: rgba(22, 21, 20, 0.86);
+    --code-bg: rgba(31, 29, 27, 0.92);
+    --input-bg: rgba(18, 17, 16, 0.92);
+    --dropdown-bg: rgba(26, 24, 22, 0.96);
+    --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.35);
   }
 }
 
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; font-family: var(--font-body); background: var(--bg); color: var(--fg); }
-#root { height: 100%; }
+[data-theme="light"] {
+  --bg: rgba(255, 255, 255, 0.84);
+  --bg-gradient-from: rgba(255, 255, 255, 0.96);
+  --bg-gradient-to: rgba(247, 248, 250, 0.90);
+  --fg: #1f2328;
+  --muted: #6f7680;
+  --border: rgba(31, 35, 40, 0.10);
+  --border-soft: rgba(31, 35, 40, 0.06);
+  --hover: rgba(31, 35, 40, 0.045);
+  --accent: #5f7f96;
+  --accent-dim: rgba(95, 127, 150, 0.14);
+  --user-bg: rgba(244, 246, 248, 0.82);
+  --msg-bg: rgba(255, 255, 255, 0.74);
+  --code-bg: rgba(248, 249, 250, 0.92);
+  --input-bg: rgba(255, 255, 255, 0.86);
+  --dropdown-bg: rgba(255, 255, 255, 0.96);
+  --shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.04), 0 2px 8px rgba(31, 35, 40, 0.04);
+  --shadow-md: 0 4px 24px rgba(31, 35, 40, 0.07);
+}
+
+[data-theme="dark"] {
+  --bg: rgba(14, 13, 12, 0.92);
+  --bg-gradient-from: rgba(18, 17, 16, 0.98);
+  --bg-gradient-to: rgba(14, 12, 10, 0.96);
+  --fg: #eceae8;
+  --muted: #9c9893;
+  --border: rgba(255, 255, 255, 0.09);
+  --border-soft: rgba(255, 255, 255, 0.055);
+  --hover: rgba(255, 255, 255, 0.055);
+  --accent: #8fb8d4;
+  --accent-dim: rgba(143, 184, 212, 0.2);
+  --user-bg: rgba(28, 26, 24, 0.88);
+  --msg-bg: rgba(22, 21, 20, 0.86);
+  --code-bg: rgba(31, 29, 27, 0.92);
+  --input-bg: rgba(18, 17, 16, 0.92);
+  --dropdown-bg: rgba(26, 24, 22, 0.96);
+  --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* Warm theme — optional manual override */
+[data-theme="warm"] {
+  --bg: rgba(255, 252, 245, 0.84);
+  --bg-gradient-from: rgba(255, 252, 245, 0.96);
+  --bg-gradient-to: rgba(248, 242, 232, 0.90);
+  --fg: #5C4033;
+  --muted: #8B7355;
+  --border: rgba(139, 115, 85, 0.2);
+  --border-soft: rgba(139, 115, 85, 0.12);
+  --hover: rgba(139, 115, 85, 0.08);
+  --accent: #D4A574;
+  --accent-dim: rgba(212, 165, 116, 0.2);
+  --user-bg: #F5E6D3;
+  --msg-bg: rgba(255, 255, 255, 0.76);
+  --code-bg: #FAF0E6;
+  --input-bg: rgba(255, 255, 255, 0.86);
+  --dropdown-bg: rgba(255, 255, 255, 0.94);
+  --shadow-sm: 0 1px 2px rgba(92, 64, 51, 0.05), 0 2px 8px rgba(92, 64, 51, 0.05);
+  --shadow-md: 0 4px 24px rgba(92, 64, 51, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-body);
+  /* 暖调横向渐变（左浅右深），fixed 与侧栏/主栏对齐视口 */
+  background-color: var(--bg-gradient-from);
+  background-image: linear-gradient(
+    90deg,
+    var(--bg-gradient-from) 0%,
+    var(--bg-gradient-to) 100%
+  );
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+  background: transparent;
+}

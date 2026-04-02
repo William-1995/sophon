@@ -6,12 +6,11 @@ Requires DEEPSEEK_API_KEY environment variable.
 """
 
 import os
-from typing import Any
-
+from config.defaults import DEFAULT_MODEL
 from providers.openai_base import OpenAICompatibleProvider
 
 _DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
-_DEFAULT_MODEL = "deepseek-chat"
+_DEFAULT_MODEL = DEFAULT_MODEL
 
 
 class DeepSeekProvider(OpenAICompatibleProvider):
@@ -20,7 +19,7 @@ class DeepSeekProvider(OpenAICompatibleProvider):
     Uses environment variables for configuration:
     - DEEPSEEK_API_KEY: Required API key.
     - DEEPSEEK_BASE_URL: Optional custom endpoint (defaults to official API).
-    - DEEPSEEK_MODEL: Optional model override (defaults to deepseek-chat).
+    - DEEPSEEK_MODEL: Optional model override (defaults to the configured model).
     """
 
     def __init__(

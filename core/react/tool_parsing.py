@@ -7,7 +7,7 @@ Handles native tool_calls and chain-of-thought parsed tool invocations.
 import json
 import logging
 
-from core.agent_loop import parse_tool_calls
+from core.agent_loop_helpers import parse_tool_calls
 from core.react.utils import extract_direct_answer
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,22 @@ def process_llm_response(
         if observations:
             logger.info("round=%d: no tools, have observations -> summarize", round_num)
         direct, _ = parse_tool_calls(content)
-        ans = extract_direct_answer((direct or content) or "")
+        raw = (direct or content) or ""
+        ans = extract_direct_answer(raw)
+        if tools:
+            # Tools are available: do not treat plain prose as a final answer (avoids
+            # "I will read the file..." exiting the loop with no tool_calls).
+            text = (content or "").strip()
+            if text.startswith("{") and '"answer"' in text:
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed.get("answer"), str):
+                        extracted = parsed["answer"].strip()
+                        if extracted:
+                            return (None, extracted)
+                except json.JSONDecodeError:
+                    pass
+            return (None, None)
         return (None, ans) if ans else (None, None)
 
     parsed = [

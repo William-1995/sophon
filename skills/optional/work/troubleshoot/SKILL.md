@@ -37,7 +37,7 @@ When to use which primitive:
 
 ## Output Contract
 
-Skills produce typed output. Main agent passes through without transformation. Frontend renders by type.
+Skills produce typed output. Main agent passes through without transformation. Frontend renders by protocol type, not by skill name or page-specific logic.
 
 ### diagnose
 
@@ -51,4 +51,4 @@ Schema: `schemas/diagnose_output.json`
 | by_level | object | Log level counts { level: count }. |
 | time_series | array | [{ date, count }] for time-based charts. |
 | operation_breakdown | array | [{ operation, count }] trace operations. |
-| gen_ui | object | When present: { type, payload: { charts } }. Each chart: { kind, labels?, values?, x?, y?, chart_type? }. |
+| gen_ui | object | Optional protocol for generic frontend rendering. Preferred shape: { type, payload: { charts } } or { format: 'a2ui', messages: [...] }. Frontend renders by protocol type; skills do not own page-specific UI. |

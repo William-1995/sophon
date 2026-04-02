@@ -1,4 +1,10 @@
-"""Fetch skill constants."""
+"""HTTP fetch skill limits and binary content-type detection.
+
+Constants:
+    FETCH_*: Timeout and response size clamps for ``get.py``.
+    OBSERVATION_PREVIEW_LEN: Truncation for text preview in observations.
+    BINARY_CONTENT_TYPE_PREFIXES: MIME prefixes treated as binary (base64 in JSON).
+"""
 
 # HTTP request limits
 FETCH_DEFAULT_TIMEOUT_SEC = 30

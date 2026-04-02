@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
 """
-Filesystem List - List files and directories in workspace.
+List files and directories under the workspace with optional glob filter and sorting.
 
-Provides directory listing with:
-- Recursive and non-recursive modes
-- Pattern filtering (glob patterns)
-- Sorting by name, size, or modification time
-- Human-readable file sizes
+Supports recursive listing, sort by name/size/mtime, and human-readable sizes.
 
-Example:
-    $ echo '{"path": ".", "recursive": true, "filter_pattern": "*.py"}' | python list.py
-    {"path": ".", "summary": {...}, "files": [...], "directories": [...]}
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
 """
 
 import fnmatch
@@ -18,19 +13,10 @@ import json
 import sys
 from pathlib import Path
 
-# Add skill root first (for constants), then project root
-_skill_root = Path(__file__).resolve().parent.parent
-_root = _skill_root.parent.parent.parent
-for p in (_skill_root, _root):
-    if str(p) not in sys.path:
-        sys.path.insert(0, str(p))
+from common.path_utils import ensure_in_workspace as _ensure_in_workspace
 
 from constants import DEFAULT_QUERY_LIMIT
 
-
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
 
 DEFAULT_SORT_BY = "name"
 DEFAULT_ORDER = "asc"
@@ -44,25 +30,6 @@ VALID_ORDERS = ["asc", "desc"]
 # ---------------------------------------------------------------------------
 # Private API
 # ---------------------------------------------------------------------------
-
-def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
-    """Check if target path is within workspace directory.
-
-    Prevents directory traversal attacks.
-
-    Args:
-        workspace_root: Root directory of the workspace.
-        target: Path to check.
-
-    Returns:
-        True if target is within workspace, False otherwise.
-    """
-    try:
-        target.resolve().relative_to(workspace_root.resolve())
-        return True
-    except ValueError:
-        return False
-
 
 def _human_size(size_bytes: int | float) -> str:
     """Convert bytes to human-readable format.

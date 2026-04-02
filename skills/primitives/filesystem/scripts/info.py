@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Filesystem info - get file/directory information."""
+"""Filesystem info - get file/directory information.
+
+Skill subprocess: read one JSON object from stdin (parameters may be nested
+under ``arguments`` or passed flat). Write one JSON object to stdout.
+"""
 import json
 import sys
 from datetime import datetime
 from pathlib import Path
+
+from common.path_utils import ensure_in_workspace as _ensure_in_workspace
 
 
 def _human_size(size_bytes: int | float) -> str:
@@ -15,15 +21,8 @@ def _human_size(size_bytes: int | float) -> str:
     return f"{size:.1f}TB"
 
 
-def _ensure_in_workspace(workspace_root: Path, target: Path) -> bool:
-    try:
-        target.resolve().relative_to(workspace_root.resolve())
-        return True
-    except ValueError:
-        return False
-
-
 def main() -> None:
+    """Run the skill entrypoint (stdin JSON → stdout JSON)."""
     params = json.loads(sys.stdin.read())
     workspace_root = Path(params.get("workspace_root", ""))
     args = params.get("arguments") or params

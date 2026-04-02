@@ -1,72 +1,45 @@
-"""
-Database utilities for primitive skills.
-
-Provides database connection management and path resolution for SQLite databases
-used by primitive skills.
-"""
+"""SQLite path resolution and connections for primitive skills."""
 
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
 
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
-
 DEFAULT_DB_FILENAME = "sophon.db"
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 def resolve_db_path(params: dict) -> Path:
-    """Resolve database path from parameters.
+    """Resolve the SQLite path from executor ``params``.
 
     Priority:
-    1. params["db_path"] if provided
-    2. params["workspace_root"] / DB_FILENAME
-    3. Current working directory / DB_FILENAME
+        1. ``params["db_path"]`` when set.
+        2. ``Path(workspace_root) / sophon.db``.
 
     Args:
-        params: Parameters dict that may contain db_path or workspace_root.
+        params (dict): May contain ``db_path`` or ``workspace_root``.
 
     Returns:
-        Resolved Path to the database file.
-
-    Example:
-        >>> params = {"workspace_root": "/path/to/workspace"}
-        >>> resolve_db_path(params)
-        PosixPath('/path/to/workspace/sophon.db')
+        pathlib.Path: Database file path.
     """
     if db_path := params.get("db_path"):
         return Path(db_path)
-    
+
     workspace = params.get("workspace_root", ".")
     return Path(workspace) / DEFAULT_DB_FILENAME
 
 
 @contextmanager
 def safe_db_connection(db_path: Path) -> Generator[sqlite3.Connection, None, None]:
-    """Context manager for safe SQLite database connection.
-
-    Ensures connection is properly closed even if an exception occurs.
+    """Open SQLite with ``row_factory=sqlite3.Row`` and always close.
 
     Args:
-        db_path: Path to the SQLite database file.
+        db_path (Path): Database file path.
 
     Yields:
-        sqlite3.Connection: Database connection object.
-
-    Example:
-        >>> db_path = Path("workspace/user/sophon.db")
-        >>> with safe_db_connection(db_path) as conn:
-        ...     cursor = conn.execute("SELECT * FROM table")
-        ...     results = cursor.fetchall()
+        sqlite3.Connection: Open connection.
 
     Raises:
-        sqlite3.Error: If database connection fails.
+        sqlite3.Error: If the connection cannot be opened.
     """
     conn = None
     try:
@@ -79,12 +52,12 @@ def safe_db_connection(db_path: Path) -> Generator[sqlite3.Connection, None, Non
 
 
 def check_db_exists(db_path: Path) -> bool:
-    """Check if database file exists.
+    """Return whether the database file exists on disk.
 
     Args:
-        db_path: Path to check.
+        db_path (Path): Candidate database path.
 
     Returns:
-        True if database file exists, False otherwise.
+        bool: True if ``db_path`` is an existing file.
     """
     return db_path.exists()

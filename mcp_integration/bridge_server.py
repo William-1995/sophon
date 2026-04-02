@@ -11,7 +11,6 @@ skills run, so they know where to POST tool calls.
 import logging
 import os
 from typing import Any
-
 from fastapi import Body, FastAPI, HTTPException
 from uvicorn import run as uvicorn_run
 
@@ -24,7 +23,7 @@ DEFAULT_PORT = 8765
 
 def create_app() -> FastAPI:
     """Create ASGI app for MCP bridge."""
-    app = FastAPI(title="Sophon MCP Bridge", version="0.1.0")
+    app = FastAPI(title="Sophon MCP Bridge", version=c)
 
     @app.get("/health")
     def health():
